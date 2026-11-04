@@ -1,0 +1,78 @@
+# Builds the installer and publishes a GitHub release whenever main has a
+# version (APP_VERSION in EQBoxerPro.ahk) that hasn't been released yet.
+# EQ Boxer Pro's built-in updater picks up the newest release.
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "EQBoxerPro.ahk"
+      - "README.md"
+      - "CHANGELOG.md"
+      - "LICENSES.txt"
+      - "installer/**"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: ver
+        run: |
+          VER=$(grep -oP 'global APP_VERSION := "\K[0-9.]+' EQBoxerPro.ahk)
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          if gh release view "v$VER" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "v$VER is already released - nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Install build tools
+        if: steps.ver.outputs.exists == 'false'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q nsis zip unzip
+          pip install --quiet markdown
+
+      - name: Build installer
+        if: steps.ver.outputs.exists == 'false'
+        run: ./installer/build.sh
+
+      - name: Release notes
+        if: steps.ver.outputs.exists == 'false'
+        run: |
+          VER="${{ steps.ver.outputs.version }}"
+          awk -v v="## $VER" '$0==v{f=1;next} /^## /{if(f)exit} f' CHANGELOG.md > notes.md
+          {
+            echo
+            echo "**Install:** download **EQBoxerPro-Setup.exe** below and run it, or let EQ Boxer Pro update itself (it checks this page when it starts)."
+            echo "Windows SmartScreen may warn because the installer isn't code-signed: *More info -> Run anyway*."
+            echo
+            echo "SHA-256 of the installer: \`$(cut -d' ' -f1 dist/EQBoxerPro-Setup.exe.sha256)\`"
+          } >> notes.md
+          cat notes.md
+
+      - name: Publish release
+        if: steps.ver.outputs.exists == 'false'
+        run: |
+          VER="${{ steps.ver.outputs.version }}"
+          gh release create "v$VER" \
+            dist/EQBoxerPro-Setup.exe dist/EQBoxerPro-Setup.exe.sha256 dist/EQBoxerPro-Portable.zip \
+            --target "$GITHUB_SHA" --title "EQ Boxer Pro $VER" --notes-file notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}
