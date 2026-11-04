@@ -24,10 +24,11 @@ MMORPG Boxer was called **EQ Boxer Pro** up to version 1.2.2. Updating, or runni
 9. [Broadcasting (how it works)](#9-broadcasting-how-it-works)
 10. [Mirror mode and mouse broadcast](#10-mirror-mode-and-mouse-broadcast)
 11. [Clickable views (Video FX)](#11-clickable-views-video-fx)
-12. [Key maps](#12-key-maps)
-13. [Configuration reference (MMORPGBoxer.ini)](#13-configuration-reference-mmorpgboxerini)
-14. [Troubleshooting](#14-troubleshooting)
-15. [Rules and fair play](#15-rules-and-fair-play)
+12. [Team and Performance](#12-team-and-performance)
+13. [Key maps](#13-key-maps)
+14. [Configuration reference (MMORPGBoxer.ini)](#14-configuration-reference-mmorpgboxerini)
+15. [Troubleshooting](#15-troubleshooting)
+16. [Rules and fair play](#16-rules-and-fair-play)
 
 ---
 
@@ -134,6 +135,9 @@ Press **Ctrl+Alt+H** to open the control panel, then click **Edit Config**.
 | Ctrl+Alt+D | `DeleteView` | Delete the view under the mouse |
 | Ctrl+Alt+V | `ToggleVFX` | Show/hide all views |
 | Ctrl+Alt+E | `ViewManager` | Open the Clickable Views window |
+| Ctrl+Alt+F | `FollowMe` | Team: every other client follows you |
+| Ctrl+Alt+X | `StopFollow` | Team: stop following |
+| Ctrl+Alt+T | `AssistMe` | Team: every other client assists you |
 | Ctrl+Alt+L | `LaunchAll` | Launch a client for every named slot (username pre-filled) |
 | Ctrl+Alt+A | `Accounts` | Open the Characters & Accounts window |
 | Ctrl+Alt+G | `Arrange` | Put any client that isn't in its slot back into place, and make every client redraw at its window size (fixes a stretched picture) |
@@ -461,7 +465,49 @@ ReferenceHeight=1080
 
 Views use Windows' own live-thumbnail feature and never touch the game itself. The source client must not be minimized.
 
-## 12. Key maps
+## 12. Team and Performance
+Open **Team & Performance...** in the control panel or the tray menu. It lists every slot. Click one, change its settings, then click **Save**.
+
+### 12.1 In-game names
+Type each slot's **character name as it is in EverQuest** (for example *Danadaf*). Follow and assist use it to target that character. The slot's label (*Tank*, *Healer*) can stay as it is.
+
+### 12.2 Team commands (follow, assist, formations)
+Use the **Team** button on the toolbar, **Team Commands...** in the control panel, or the hotkeys. They act from the client you're in, and the app types EverQuest's own commands into each other client in turn, the same way broadcast reaches them.
+
+| Command | Default hotkey | What every other client does |
+|---|---|---|
+| Follow me | Ctrl+Alt+F | `/target <you>` then `/follow` |
+| Follow in a line | (none) | Each follows the one before it, in slot order: a line behind you instead of a crowd |
+| Stop following | Ctrl+Alt+X | Taps the walk-backwards key (`StopFollowKey`, default Down arrow), which breaks `/follow` |
+| Assist me | Ctrl+Alt+T | `/assist <you>` (takes your target) |
+| Attack my target | (none) | `/assist <you>` then `/attack on` |
+| Back off | (none) | `/attack off` |
+| Everyone sit / stand | (none) | `/sit on` / `/sit off` (you too) |
+
+Give any of them a hotkey in `[Hotkeys]`: `FollowMe`, `FollowLine`, `StopFollow`, `AssistMe`, `AttackMyTarget`, `BackOff`, `SitAll`, `StandAll`.
+
+The commands are typed into the chat box (Enter, the command, Enter), so leave the chat box empty. EverQuest needs a background frame rate of about 25 or more for `/follow` to keep up (see 12.4).
+
+### 12.3 CPU cores and priority
+- **CPU cores:** `all` (normal), or the logical core numbers the client may use, for example `0-3` or `4-11,14`. The tooltip shows how many cores your PC has.
+- **Priority:** Normal, Above normal, High or Below normal.
+- **Auto-assign CPU Cores** gives your main slot (slot 1, or `MainSlot` in `[CPU]`) about a quarter of the cores to itself, at Above normal priority, and lets the other clients share the rest. **Reset CPU to Normal** undoes it.
+- Settings apply straight away to running clients and to every client as it starts. Most PCs run fine with everything on `all`; try auto-assign if your main stutters when every client is busy.
+
+### 12.4 Frame-rate caps
+**Max FPS** has two boxes: the cap while the client is the one you're in, and the cap while it's in the background. They're EverQuest's own settings (`MaxFPS` and `MaxBGFPS`), written for that client before it starts, so a change takes effect the next time the client starts. Leave both blank to keep what you set in EverQuest (Alt+O → Display). Lower background caps save CPU and graphics power, but keep them at about 25 or more so `/follow` works.
+
+### 12.5 Separate EverQuest settings for each character
+With **Separate EverQuest settings file for each character** ticked (the default), each character keeps its own `eqclient.ini` (and `eqlsPlayerData.ini`, which holds the login screen's choices) in the **Profiles** folder next to the app:
+- Before a client starts, its character's own copy is put in place, so each character keeps its own graphics settings, window size and frame-rate caps.
+- While you play, EverQuest's `eqclient.ini` holds the settings of the client you're in. When that client re-reads it (for example when you log out to server select), it gets its own resolution, not another slot's. That stops the stretched picture after logging out.
+- When EverQuest saves its settings, they go back into the copy of the client that saved them.
+- The first time, every character starts from a copy of your current `eqclient.ini`, and the original is backed up to `Profiles\_original`.
+- Profiles are named after the in-game name, or the slot's character label if there isn't one. Changing the name starts a new profile from the current settings.
+
+This works by swapping files; nothing is injected into the game.
+
+## 13. Key maps
 Key maps are custom hotkeys that send a key to chosen clients, optionally rotating through them.
 
 ```
@@ -500,7 +546,7 @@ DPS=3,4
 Party=1,2,3,4
 ```
 
-## 13. Configuration reference (MMORPGBoxer.ini)
+## 14. Configuration reference (MMORPGBoxer.ini)
 Keep comments on their own lines. A `;` after a value becomes part of the value. After editing, press **Ctrl+Alt+R**.
 
 ### [General]
@@ -582,12 +628,12 @@ Your own layouts: `slot=x,y,width,height`, in pixels from the monitor's top-left
 See the [hotkey reference](#5-hotkey-reference). Leave a value empty to disable that hotkey.
 
 ### [KeyMap.Name]
-See [Key maps](#12-key-maps).
+See [Key maps](#13-key-maps).
 
 ### [VFX]
 See [Clickable views](#11-clickable-views-video-fx).
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 | Problem | Cause and fix |
 |---|---|
@@ -634,7 +680,7 @@ If windows don't end up where they should, click **Diagnostics...** in the contr
 
 Send that file to whoever is helping you fix a layout problem. The log is cleared automatically when it grows past 1 MB.
 
-## 15. Rules and fair play
+## 16. Rules and fair play
 - The app follows the long-standing community rule of thumb: **one key press = one action per client**. There are no delays, no timed sequences, and nothing runs unless you press a key or click.
 - Daybreak has never officially endorsed any multiboxing software. Use broadcasting at your own risk.
 - Some servers (for example certain progression servers) limit how many accounts you may run at once. Check your server's rules.

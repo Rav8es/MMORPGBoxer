@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "MMORPG Boxer"
-global APP_VERSION := "1.3.0"
+global APP_VERSION := "1.4.0"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/MMORPGBoxer"
 global OLD_UPDATE_REPO := "Rav8es/BoxerPro"     ; its name before the rename
@@ -173,6 +173,12 @@ global VM := 0                ; Clickable Views window and its controls
 global TipsOn := Cfg("General", "ShowTooltips", "1") = "1"
 global Tips := Map()          ; control hwnd -> tooltip text
 global TipHwnd := 0           ; control the pointer is over
+global ProfilesOn := Cfg("Profiles", "PerCharacter", "1") = "1"
+global IniHolder := 0         ; slot whose own settings eqclient.ini holds right now
+global IniStamp := ""         ; eqclient.ini's time/size when we last wrote or saved it
+global LastClosed := {n: 0, t: 0}   ; the slot whose client closed most recently
+global CpuDone := Map()       ; id -> CPU settings applied to that client
+global PF := 0                ; Team & Performance window
 
 ; ------------------------------ Hotkeys -------------------------------
 ; App hotkeys first (they take priority over broadcast hotkeys on the same key).
@@ -193,6 +199,14 @@ BindHotkey("ToggleVFX",       "^!v", ToggleVFX)
 BindHotkey("CreateView",      "^!c", CreateView)
 BindHotkey("DeleteView",      "^!d", DeleteView)
 BindHotkey("ViewManager",     "^!e", ShowViews)
+BindHotkey("FollowMe",        "^!f", TeamDo.Bind("follow"))
+BindHotkey("StopFollow",      "^!x", TeamDo.Bind("stop"))
+BindHotkey("AssistMe",        "^!t", TeamDo.Bind("assist"))
+BindHotkey("FollowLine",      "",    TeamDo.Bind("line"))
+BindHotkey("AttackMyTarget",  "",    TeamDo.Bind("attack"))
+BindHotkey("BackOff",         "",    TeamDo.Bind("backoff"))
+BindHotkey("SitAll",          "",    TeamDo.Bind("sit"))
+BindHotkey("StandAll",        "",    TeamDo.Bind("stand"))
 BindHotkey("LaunchAll",       "^!l", LaunchAll)
 BindHotkey("Accounts",        "^!a", ShowAccounts)
 BindHotkey("ReloadConfig",    "^!r", (*) => Reload(), "S")
@@ -236,6 +250,7 @@ A_TrayMenu.Add("Show/Hide Toolbar", ToggleToolbar)
 A_TrayMenu.Add("Launch All", LaunchAll)
 A_TrayMenu.Add("Characters && Accounts...", ShowAccounts)
 A_TrayMenu.Add("Clickable Views...", ShowViews)
+A_TrayMenu.Add("Team && Performance...", ShowPerf)
 A_TrayMenu.Add("Setup Wizard...", ShowWizard)
 A_TrayMenu.Add("Diagnostics...", Diagnostics)
 A_TrayMenu.Add("Check for Updates...", (*) => CheckForUpdates(false))
@@ -272,6 +287,7 @@ WatchClients()
 SetTimer(WatchClients, 1000)
 SetTimer(CheckActive, 150)
 SetTimer(ClipGuard, 300)               ; keep hidden title bars hidden
+SetTimer(ProfileTick, 500)             ; per-character eqclient.ini
 ; Open the control panel when the app starts ([General] ShowPanelOnStart)
 if (Cfg("General", "ShowPanelOnStart", "1") = "1" && !DllCall("IsWindowVisible", "Ptr", Panel.Hwnd))
     TogglePanel()
@@ -376,6 +392,7 @@ RefreshSlots() {
     Loop MAX_SLOTS {
         if (Slots[A_Index] && !WinExist("ahk_id " Slots[A_Index])) {
             Slots[A_Index] := 0
+            LastClosed.n := A_Index, LastClosed.t := A_TickCount
             changed := true
         }
     }
@@ -473,12 +490,512 @@ ResyncAll(*) {
             ResyncClient(id, "Arrange")
 }
 
+; ------------------ Per-character EverQuest settings -------------------
+; Every EverQuest client shares one eqclient.ini. Each character gets its own
+; copy instead (Profiles\<name>\eqclient.ini, plus eqlsPlayerData.ini for
+; the login screen):
+; - before a client starts, its character's copy is put in place;
+; - while you play, eqclient.ini holds the copy of the client you're in, so
+;   when that client re-reads it (for example logging out to server select)
+;   it gets its own resolution and settings, not another slot's;
+; - when EverQuest saves eqclient.ini, the change goes back into the copy of
+;   the client that saved it (the one that just closed, or the one you're in).
+; [Profiles] PerCharacter=0 turns this off.
+
+InGameName(n) => Trim(Cfg("InGameNames", String(n), ""))
+
+ProfileName(n) {
+    name := InGameName(n)
+    if (name = "")
+        name := Chars[n]
+    if (name = "")
+        name := "Slot " n
+    return RegExReplace(name, '[\\/:*?"<>|]', "_")
+}
+
+ProfileDir(n) => A_ScriptDir "\Profiles\" ProfileName(n)
+
+EqIni() => EQPath "\eqclient.ini"
+
+FileStamp(f) {
+    try return FileGetTime(f, "M") "/" FileGetSize(f)
+    return ""
+}
+
+; Make sure slot n's character has its own copies (first time: a copy of the
+; current shared ones). Returns its folder.
+EnsureProfile(n) {
+    dir := ProfileDir(n)
+    try {
+        if !DirExist(A_ScriptDir "\Profiles\_original") && FileExist(EqIni()) {
+            DirCreate(A_ScriptDir "\Profiles\_original")
+            FileCopy(EqIni(), A_ScriptDir "\Profiles\_original\eqclient.ini", 1)
+            if FileExist(EQPath "\eqlsPlayerData.ini")
+                FileCopy(EQPath "\eqlsPlayerData.ini", A_ScriptDir "\Profiles\_original\eqlsPlayerData.ini", 1)
+            WriteLog("profiles: backed up the original eqclient.ini to Profiles\_original")
+        }
+        if !DirExist(dir)
+            DirCreate(dir)
+        if (!FileExist(dir "\eqclient.ini") && FileExist(EqIni())) {
+            FileCopy(EqIni(), dir "\eqclient.ini", 1)
+            WriteLog("profiles: created " ProfileName(n) "'s own eqclient.ini from the shared one")
+        }
+        if (!FileExist(dir "\eqlsPlayerData.ini") && FileExist(EQPath "\eqlsPlayerData.ini"))
+            FileCopy(EQPath "\eqlsPlayerData.ini", dir "\eqlsPlayerData.ini", 1)
+    }
+    return dir
+}
+
+; Put slot n's own settings in place (withLogin: also its login-screen file).
+LoadProfile(n, withLogin := false) {
+    global IniHolder, IniStamp
+    if (!n || !FileExist(EqIni()))
+        return
+    dir := EnsureProfile(n)
+    try {
+        if FileExist(dir "\eqclient.ini")
+            FileCopy(dir "\eqclient.ini", EqIni(), 1)
+        if (withLogin && FileExist(dir "\eqlsPlayerData.ini"))
+            FileCopy(dir "\eqlsPlayerData.ini", EQPath "\eqlsPlayerData.ini", 1)
+    } catch as e {
+        WriteLog("profiles: couldn't load " ProfileName(n) "'s settings: " e.Message)
+        return
+    }
+    IniHolder := n
+    WriteSlotGeometry(n)
+    IniStamp := FileStamp(EqIni())
+}
+
+; Write slot n's window position/size and frame-rate caps into eqclient.ini:
+; the real ones while it runs, otherwise the ones it should start with.
+WriteSlotGeometry(n) {
+    ini := EqIni()
+    id := Slots[n]
+    if (id && WinExist("ahk_id " id)) {
+        try {
+            WinGetPos(&ox, &oy, , , "ahk_id " id)
+            WinGetClientPos(, , &pw, &ph, "ahk_id " id)
+            IniWrite(ox, ini, "Defaults", "WindowedModeXOffset")
+            IniWrite(oy, ini, "Defaults", "WindowedModeYOffset")
+            IniWrite(0, ini, "Defaults", "Maximized")
+            IniWrite(pw, ini, "VideoMode", "WindowedWidth")
+            IniWrite(ph, ini, "VideoMode", "WindowedHeight")
+            WriteFpsCaps(ini, n)
+        }
+    } else
+        PrepareSlotIni(n, true)
+}
+
+; Copy the shared eqclient.ini (just saved by EverQuest) into slot n's copy.
+SaveToProfile(n) {
+    global IniStamp
+    dir := EnsureProfile(n)
+    try {
+        FileCopy(EqIni(), dir "\eqclient.ini", 1)
+        WriteLog("profiles: EverQuest saved its settings - kept them as " ProfileName(n) "'s")
+    }
+    IniStamp := FileStamp(EqIni())
+}
+
+ProfileTick() {
+    global IniStamp
+    static lastActive := 0, since := 0
+    if (!ProfilesOn || !FileExist(EqIni()))
+        return
+    st := FileStamp(EqIni())
+    if (IniStamp != "" && st != IniStamp && !Launching) {
+        ; EverQuest wrote eqclient.ini: who? A client that just closed, else
+        ; the one you're in, else the one whose settings were in the file.
+        owner := (LastClosed.n && A_TickCount - LastClosed.t < 8000) ? LastClosed.n : SlotOf(WinActive(EQ))
+        if !owner
+            owner := IniHolder
+        if owner
+            SaveToProfile(owner)
+        else
+            IniStamp := st
+    } else if (IniStamp = "")
+        IniStamp := st
+    if (Launching || Switching)
+        return
+    ; Which client's settings should be in the file now? The next free slot
+    ; (ready for you to start it by hand), otherwise the client you're in.
+    free := FirstFreeSlot()
+    act := SlotOf(WinActive(EQ))
+    if (act != lastActive)
+        lastActive := act, since := A_TickCount
+    target := (free && Chars[free] != "") ? free : (act && A_TickCount - since > 700) ? act : 0
+    if (target && target != IniHolder)
+        LoadProfile(target)
+}
+
+; Layout or resolution changed: get eqclient.ini ready for the next client.
+PrepFreeSlotIni() {
+    global IniHolder
+    if ProfilesOn
+        IniHolder := 0          ; ProfileTick reloads it with the new values
+    else
+        PrepareSlotIni(FirstFreeSlot(), true)
+}
+
+OpenProfiles(*) {
+    DirCreate(A_ScriptDir "\Profiles")
+    Run('explorer.exe "' A_ScriptDir '\Profiles"')
+}
+
+; ---------------------- Frame-rate caps (per slot) ----------------------
+; EverQuest's own caps ([Options] MaxFPS / MaxBGFPS in eqclient.ini) are set
+; for each client before it starts. [FPS] Slot<n>=<active>,<background>
+SlotFps(n) {
+    p := StrSplit(Cfg("FPS", "Slot" n, ""), ",", " `t")
+    return {fg: (p.Length >= 1 && IsInteger(p[1])) ? Integer(p[1]) : ""
+          , bg: (p.Length >= 2 && IsInteger(p[2])) ? Integer(p[2]) : ""}
+}
+
+WriteFpsCaps(ini, n) {
+    f := SlotFps(n)
+    try {
+        if (f.fg != "")
+            IniWrite(f.fg, ini, "Options", "MaxFPS")
+        if (f.bg != "")
+            IniWrite(f.bg, ini, "Options", "MaxBGFPS")
+    }
+}
+
+; ---------------------- CPU cores and priority ----------------------
+; [CPU] Slot<n>=all | 0-3,8 (logical core numbers)   Priority<n>=Normal...
+CpuCount() => Max(1, Min(64, ToInt(EnvGet("NUMBER_OF_PROCESSORS"), 1)))
+
+AllCoresMask() => CpuCount() >= 64 ? -1 : (1 << CpuCount()) - 1
+
+; "0-3,8" -> bit mask (0 = all cores / not set)
+CoresMask(spec) {
+    spec := Trim(spec)
+    if (spec = "" || spec = "all")
+        return 0
+    mask := 0
+    for part in StrSplit(spec, ",", " `t") {
+        if RegExMatch(part, "^(\d+)\s*-\s*(\d+)$", &m) {
+            Loop (Integer(m[2]) - Integer(m[1]) + 1)
+                if (Integer(m[1]) + A_Index - 1 < CpuCount())
+                    mask |= 1 << (Integer(m[1]) + A_Index - 1)
+        } else if (IsInteger(part) && Integer(part) < CpuCount())
+            mask |= 1 << Integer(part)
+    }
+    return mask
+}
+
+PriorityNames() => ["Normal", "Above normal", "High", "Below normal"]
+
+PriorityClass(name) {
+    switch name, false {
+        case "Above normal", "AboveNormal": return 0x8000
+        case "High": return 0x80
+        case "Below normal", "BelowNormal": return 0x4000
+    }
+    return 0x20
+}
+
+SlotCores(n) => Trim(Cfg("CPU", "Slot" n, "all"))
+SlotPriority(n) => Cfg("CPU", "Priority" n, "Normal")
+
+ApplyCpu(n) {
+    id := Slots[n]
+    if !id
+        return
+    key := SlotCores(n) "|" SlotPriority(n)
+    CpuDone[id] := key
+    if (key = "all|Normal" && !CpuDone.Has("touched" id))
+        return                          ; nothing to change
+    CpuDone["touched" id] := true
+    try pid := WinGetPID("ahk_id " id)
+    catch
+        return
+    h := DllCall("OpenProcess", "UInt", 0x0600, "Int", 0, "UInt", pid, "Ptr")   ; SET_INFORMATION | QUERY_INFORMATION
+    if !h {
+        WriteLog("slot " n ": couldn't change CPU settings (error " A_LastError ")")
+        return
+    }
+    mask := CoresMask(SlotCores(n))
+    ok1 := DllCall("SetProcessAffinityMask", "Ptr", h, "UPtr", mask ? mask : AllCoresMask())
+    ok2 := DllCall("SetPriorityClass", "Ptr", h, "UInt", PriorityClass(SlotPriority(n)))
+    DllCall("CloseHandle", "Ptr", h)
+    WriteLog("slot " n ": CPU cores " SlotCores(n) ", priority " SlotPriority(n) ((ok1 && ok2) ? "" : " (Windows refused part of it)"))
+}
+
+ApplyCpuAll(*) {
+    for n, id in Slots
+        if id {
+            CpuDone.Delete(id)
+            ApplyCpu(n)
+        }
+}
+
+; ------------------------- Team helpers -------------------------
+; Follow / assist / attack using EverQuest's own commands, typed into each
+; other client in turn (the same way broadcast reaches them). Needs each
+; slot's in-game character name (Team & Performance window).
+TeamDo(kind, *) {
+    global Switching
+    static busy := false
+    if busy
+        return
+    act := SlotOf(WinActive(EQ))
+    if !act {
+        Status("Click into the EverQuest client that should lead first")
+        return
+    }
+    KeyWait("Ctrl", "T1"), KeyWait("Alt", "T1"), KeyWait("Shift", "T1")
+    me := InGameName(act)
+    others := []
+    for n, id in Slots
+        if (id && n != act)
+            others.Push(n)
+    if (kind = "sit" || kind = "stand")
+        others.InsertAt(1, act)
+    needNames := (kind = "follow" || kind = "assist" || kind = "attack" || kind = "line")
+    if (needNames && me = "") {
+        MsgBox("Set the in-game character name for slot " act " first (Team && Performance window).", APP, "Iconi")
+        ShowPerf()
+        return
+    }
+    if (kind = "line")
+        for n in others
+            if (InGameName(n) = "") {
+                MsgBox("Set the in-game character name for slot " n " first (Team && Performance window).", APP, "Iconi")
+                ShowPerf()
+                return
+            }
+    busy := true
+    Switching := true
+    prev := Slots[act]
+    delay := ToInt(Cfg("Broadcast", "SwitchDelay", "20"), 20)
+    leader := me
+    done := 0
+    for n in others {
+        id := Slots[n]
+        cmds := []
+        switch kind {
+            case "follow": cmds := ["/target " me, "/follow"]
+            case "line":   cmds := ["/target " leader, "/follow"], leader := InGameName(n)
+            case "assist": cmds := ["/assist " me]
+            case "attack": cmds := ["/assist " me, "/attack on"]
+            case "backoff": cmds := ["/attack off"]
+            case "sit":    cmds := ["/sit on"]
+            case "stand":  cmds := ["/sit off"]
+        }
+        try {
+            if (id != WinActive("A")) {
+                WinActivate("ahk_id " id)
+                if !WinWaitActive("ahk_id " id, , 0.5)
+                    continue
+            }
+            Sleep(delay + 30)
+            if (kind = "stop") {
+                k := Cfg("Team", "StopFollowKey", "Down")
+                SendInput("{" k " down}")
+                Sleep(150)
+                SendInput("{" k " up}")
+            } else {
+                for c in cmds {
+                    SendInput("{Enter}")
+                    Sleep(40)
+                    SendInput("{Raw}" c)
+                    Sleep(20)
+                    SendInput("{Enter}")
+                    Sleep(60)
+                }
+            }
+            done++
+        }
+    }
+    try WinActivate("ahk_id " prev)
+    Switching := false
+    busy := false
+    label := Map("follow", "Follow me", "line", "Follow in a line", "stop", "Stop following", "assist", "Assist me"
+        , "attack", "Attack my target", "backoff", "Back off", "sit", "Sit", "stand", "Stand")[kind]
+    Status(label " - " done " client(s)", 2500)
+}
+
+TeamMenu(*) {
+    H(name, def) => (k := Cfg("Hotkeys", name, def)) != "" ? "`t" NiceKey(k) : ""
+    m := Menu()
+    m.Add("Follow me" H("FollowMe", "^!f"), TeamDo.Bind("follow"))
+    m.Add("Follow in a line (each follows the one before)" H("FollowLine", ""), TeamDo.Bind("line"))
+    m.Add("Stop following" H("StopFollow", "^!x"), TeamDo.Bind("stop"))
+    m.Add()
+    m.Add("Assist me (take my target)" H("AssistMe", "^!t"), TeamDo.Bind("assist"))
+    m.Add("Attack my target" H("AttackMyTarget", ""), TeamDo.Bind("attack"))
+    m.Add("Back off (stop attacking)" H("BackOff", ""), TeamDo.Bind("backoff"))
+    m.Add()
+    m.Add("Everyone sit" H("SitAll", ""), TeamDo.Bind("sit"))
+    m.Add("Everyone stand" H("StandAll", ""), TeamDo.Bind("stand"))
+    m.Add()
+    m.Add("Team && Performance settings...", ShowPerf)
+    prev := WinActive("A")
+    if TB
+        DllCall("SetForegroundWindow", "Ptr", TB.Hwnd)
+    m.Show()
+    if (prev && WinExist("ahk_id " prev))
+        try WinActivate("ahk_id " prev)
+}
+
+; ---------------------- Team & Performance window ----------------------
+ShowPerf(*) {
+    global PF
+    g := 0
+    PBtn(opts, label, fn, tip) {
+        btn := g.AddButton(opts, label)
+        btn.OnEvent("Click", fn)
+        AddTip(btn, tip)
+    }
+    if !PF {
+        g := Gui(, APP " - Team & Performance")
+        g.SetFont("s10", "Segoe UI")
+        PF := {gui: g}
+        PF.list := g.AddListView("xm w700 r8 -Multi", ["Slot", "Character", "In-game name", "CPU cores", "Priority", "Max FPS (active / background)"])
+        PF.list.OnEvent("ItemSelect", (*) => PerfLoad())
+        g.AddGroupBox("xm y+10 w700 h150", "Selected slot")
+        PF.slotTxt := g.AddText("xp+12 yp+26 w60 h26 0x200", "Slot 1")
+        g.AddText("x+4 yp w110 h26 0x200", "In-game name:")
+        PF.name := g.AddEdit("x+4 yp w170")
+        AddTip(PF.name, "The character's name in EverQuest. Follow and assist use it to target this character.")
+        g.AddText("x+16 yp w80 h26 0x200", "CPU cores:")
+        PF.cores := g.AddEdit("x+4 yp w170")
+        AddTip(PF.cores, "all = every core (normal), or core numbers like 0-3 or 4-11,14 (this PC has " CpuCount() " logical cores: 0-" (CpuCount() - 1) ")")
+        g.AddText("xm+76 y+10 w110 h26 0x200", "Priority:")
+        PF.prio := g.AddDropDownList("x+4 yp w170", PriorityNames())
+        AddTip(PF.prio, "How Windows prioritises this client. Above normal for your main is usually enough.")
+        g.AddText("x+16 yp w80 h26 0x200", "Max FPS:")
+        PF.fg := g.AddEdit("x+4 yp w56 Number")
+        AddTip(PF.fg, "Frame-rate cap while this client is the one you're in (blank = leave EverQuest's setting)")
+        g.AddText("x+4 yp w14 h26 0x200 Center", "/")
+        PF.bg := g.AddEdit("x+4 yp w56 Number")
+        AddTip(PF.bg, "Frame-rate cap while this client is in the background (blank = leave EverQuest's setting).`nEverQuest needs about 25 or more for /follow to keep up.")
+        PBtn("xm+76 y+12 w150 h30", "Save", (*) => PerfSave(), "Save this slot's settings and apply the CPU settings now")
+        g.AddText("x+12 yp w450 h30 0x200 cGray", "Frame-rate caps apply the next time this client starts.")
+        PF.prof := g.AddCheckbox("xm y+22 w440" (ProfilesOn ? " Checked" : ""), "Separate EverQuest settings file for each character")
+        PF.prof.OnEvent("Click", PerfProfiles)
+        AddTip(PF.prof, "Each character keeps its own eqclient.ini (graphics, window, frame-rate caps) in the Profiles folder.`nAlso stops a client picking up another slot's resolution when you log out.")
+        PBtn("x+8 yp-4 w250 h30", "Open Profiles Folder", OpenProfiles, "Where each character's eqclient.ini is kept")
+        PBtn("xm y+14 w220 h32", "Auto-assign CPU Cores", (*) => PerfAutoCores(), "Give your main slot cores of its own and share the rest between the others")
+        PBtn("x+8 yp w220 h32", "Reset CPU to Normal", (*) => PerfResetCores(), "Every client uses every core at normal priority")
+        PBtn("x+8 yp w244 h32", "Team Commands...", TeamMenu, "Follow me, assist me, attack, sit, stand ...")
+        g.AddText("xm y+14 w160 h26 0x200", "Stop-following key:")
+        PF.stop := g.AddEdit("x+4 yp w120", Cfg("Team", "StopFollowKey", "Down"))
+        PF.stop.OnEvent("Change", (c, *) => IniWrite(Trim(c.Value), CFG_FILE, "Team", "StopFollowKey"))
+        AddTip(PF.stop, "The key that walks backwards in EverQuest (pressing it breaks /follow). AutoHotkey key name, e.g. Down or s.")
+        g.AddText("xm y+12 w700 cGray", "Follow and assist type EverQuest's own commands (/target, /follow, /assist, /attack) into each other client in turn, the same way broadcast reaches them.")
+        g.OnEvent("Close", (*) => g.Hide())
+        g.OnEvent("Escape", (*) => g.Hide())
+    }
+    PF.gui.Show()
+    PerfRefresh()
+}
+
+PerfRefresh(keep := 0) {
+    if !(PF && DllCall("IsWindowVisible", "Ptr", PF.gui.Hwnd))
+        return
+    if !keep
+        keep := Max(1, PF.list.GetNext(0))
+    PF.list.Opt("-Redraw")
+    PF.list.Delete()
+    Loop MAX_SLOTS {
+        f := SlotFps(A_Index)
+        PF.list.Add(, A_Index, Chars[A_Index], InGameName(A_Index), SlotCores(A_Index), SlotPriority(A_Index)
+            , (f.fg = "" && f.bg = "") ? "EverQuest's own" : (f.fg = "" ? "-" : f.fg) " / " (f.bg = "" ? "-" : f.bg))
+    }
+    Loop 6
+        PF.list.ModifyCol(A_Index, "AutoHdr")
+    PF.list.Modify(Min(keep, MAX_SLOTS), "Select Focus Vis")
+    PF.list.Opt("+Redraw")
+    PerfLoad()
+}
+
+PerfLoad() {
+    n := PF.list.GetNext(0)
+    if !n
+        return
+    PF.slotTxt.Text := "Slot " n
+    PF.name.Value := InGameName(n)
+    PF.cores.Value := SlotCores(n)
+    try PF.prio.Text := SlotPriority(n)
+    catch
+        PF.prio.Choose(1)
+    f := SlotFps(n)
+    PF.fg.Value := f.fg, PF.bg.Value := f.bg
+}
+
+PerfSave() {
+    n := PF.list.GetNext(0)
+    if !n
+        return
+    cores := Trim(PF.cores.Value)
+    if (cores != "" && cores != "all" && !CoresMask(cores)) {
+        MsgBox("CPU cores: use all, or numbers between 0 and " (CpuCount() - 1) " such as 0-3 or 4-11,14.", APP, "Icon! Owner" PF.gui.Hwnd)
+        return
+    }
+    IniWrite(Trim(PF.name.Value), CFG_FILE, "InGameNames", String(n))
+    IniWrite(cores = "" ? "all" : cores, CFG_FILE, "CPU", "Slot" n)
+    IniWrite(PF.prio.Text, CFG_FILE, "CPU", "Priority" n)
+    fg := Trim(PF.fg.Value), bg := Trim(PF.bg.Value)
+    IniWrite((fg = "" && bg = "") ? "" : fg "," bg, CFG_FILE, "FPS", "Slot" n)
+    if Slots[n] {
+        CpuDone.Delete(Slots[n])
+        ApplyCpu(n)
+    }
+    PerfRefresh(n)
+    Status("Saved slot " n)
+}
+
+PerfProfiles(ctrl, *) {
+    global ProfilesOn, IniHolder
+    ProfilesOn := !!ctrl.Value
+    IniWrite(ProfilesOn ? 1 : 0, CFG_FILE, "Profiles", "PerCharacter")
+    IniHolder := 0
+    Status("Separate settings per character " (ProfilesOn ? "on" : "off"))
+}
+
+; Main slot (slot 1, or [CPU] MainSlot) gets about a quarter of the cores
+; (at least 2, an even number so it keeps whole physical cores); everyone
+; else shares the rest. Main gets Above normal priority.
+PerfAutoCores() {
+    total := CpuCount()
+    if (total < 4) {
+        MsgBox("This PC has " total " logical cores - too few to split. Leave every client on all cores.", APP, "Iconi Owner" PF.gui.Hwnd)
+        return
+    }
+    main := ToInt(Cfg("CPU", "MainSlot", "1"), 1)
+    k := Max(2, (total // 4) & ~1)
+    Loop MAX_SLOTS {
+        n := A_Index
+        IniWrite(n = main ? "0-" (k - 1) : k "-" (total - 1), CFG_FILE, "CPU", "Slot" n)
+        IniWrite(n = main ? "Above normal" : "Normal", CFG_FILE, "CPU", "Priority" n)
+    }
+    ApplyCpuAll()
+    PerfRefresh()
+    Status("Slot " main " has cores 0-" (k - 1) " to itself, the others share " k "-" (total - 1))
+}
+
+PerfResetCores() {
+    Loop MAX_SLOTS {
+        IniWrite("all", CFG_FILE, "CPU", "Slot" A_Index)
+        IniWrite("Normal", CFG_FILE, "CPU", "Priority" A_Index)
+    }
+    ApplyCpuAll()
+    PerfRefresh()
+    Status("Every client uses every core at normal priority")
+}
+
 WatchClients() {
     global Enforcing
     changed := RefreshSlots()
     UpdateTitles()
-    if !Launching
+    if (!Launching && !ProfilesOn)
         PrepareSlotIni(FirstFreeSlot())
+    if !Launching
+        for n, id in Slots
+            if (id && !CpuDone.Has(id))
+                ApplyCpu(n)
     CheckOffSlot()
     VfxCheck()
     if changed {
@@ -942,7 +1459,7 @@ SaveSlotRes(n, text) {
         Unmanaged.Delete(Slots[n])
         Arrange()            ; resizes it now; EverQuest redraws at the new size
     }
-    PrepareSlotIni(FirstFreeSlot(), true)
+    PrepFreeSlotIni()
     return true
 }
 
@@ -999,6 +1516,7 @@ PrepareSlotIni(n, force := false) {
     ini := EQPath "\eqclient.ini"
     if !FileExist(ini)
         return
+    WriteFpsCaps(ini, n)
     c := CellFor(n, true)               ; the size it can safely open at
     if !c
         return
@@ -1611,7 +2129,7 @@ SetLayout(name) {
     Unmanaged.Clear()
     Fixes.Clear()
     Arrange()
-    PrepareSlotIni(FirstFreeSlot(), true)
+    PrepFreeSlotIni()
     if LayoutDDL
         try LayoutDDL.Text := name
     msg := "Layout: " name
@@ -1779,7 +2297,7 @@ AssignSlot(n, *) {
 
 ; ------------------------------- Launcher -----------------------------
 LaunchAll(*) {
-    global Launching
+    global Launching, IniStamp
     exe := EQPath "\" EQExe
     if !FileExist(exe) {
         MsgBox("Can't find " exe "`n`nSet EQPath in MMORPGBoxer.ini.", APP, "Icon!")
@@ -1793,6 +2311,8 @@ LaunchAll(*) {
             if (Chars[n] = "" || Slots[n])
                 continue
             before := WinGetList(EQ)
+            if ProfilesOn
+                LoadProfile(n, true)          ; this character's own eqclient.ini
             PrepareSlotIni(n, true)
             Status("Launching slot " n " (" Chars[n] ")...", 0)
             args := LaunchArgs
@@ -1809,6 +2329,7 @@ LaunchAll(*) {
                 Slots[n] := id
                 NoteStart(id)
                 UpdateTitles()
+                ApplyCpu(n)
                 ; wait until this client has finished starting (its window
                 ; stopped changing) and has been arranged, before the next one
                 start := A_TickCount
@@ -1822,6 +2343,7 @@ LaunchAll(*) {
         MsgBox("Launch failed:`n" e.Message, APP, "Icon!")
     }
     Launching := false
+    IniStamp := FileStamp(EqIni())     ; our own writes while launching aren't EverQuest's
     Arrange()
     Status("Launch complete - " CountClients() " client(s)")
 }
@@ -3362,6 +3884,7 @@ BuildToolbar() {
     TBAdd("vfx",     "Views",      ToggleVFX, "Views ON")
     TBAdd("audio",   "Sound: All", ToggleAudio, "Sound: Active")
     TBAdd("views",   "Edit Views", ShowViews)
+    TBAdd("team",    "Team",       TeamMenu)
     TBAdd("arrange", "Arrange",    ManualArrange)
     TBAdd("layout",  "Layout",     ToggleLayout)
     TBAdd("launch",  "Launch All", LaunchAll)
@@ -3397,6 +3920,7 @@ BuildToolbar() {
               , ["vfx", "Show or hide your clickable views", "ToggleVFX", "^!v"]
               , ["audio", "Sound from the client you're in only, or from all clients", "ToggleAudio", "^!o"]
               , ["views", "Open Clickable Views: make, move, change and delete views", "ViewManager", "^!e"]
+              , ["team", "Team commands: follow me, stop following, assist me, attack, sit, stand.`nFollow me " NiceKey(Cfg("Hotkeys", "FollowMe", "^!f")) ", stop " NiceKey(Cfg("Hotkeys", "StopFollow", "^!x")) ", assist me " NiceKey(Cfg("Hotkeys", "AssistMe", "^!t")), "", ""]
               , ["arrange", "Put every client back in its slot and make it redraw at its size`n(fixes a stretched picture)", "Arrange", "^!g"]
               , ["layout", "Switch to the next layout", "ToggleLayout", "^!s"]
               , ["launch", "Start every slot that has a character", "LaunchAll", "^!l"]
@@ -3727,6 +4251,10 @@ HotkeyHelp(*) {
               , ["ToggleMirror", "^!m", "Mirror mode on/off"], ["CreateView", "^!c", "New clickable view"]
               , ["DeleteView", "^!d", "Delete view under mouse"], ["ToggleVFX", "^!v", "Views on/off"]
               , ["ViewManager", "^!e", "Clickable Views window"]
+              , ["FollowMe", "^!f", "Team: everyone follow me"], ["StopFollow", "^!x", "Team: stop following"]
+              , ["AssistMe", "^!t", "Team: assist me"], ["FollowLine", "", "Team: follow in a line"]
+              , ["AttackMyTarget", "", "Team: attack my target"], ["BackOff", "", "Team: back off"]
+              , ["SitAll", "", "Team: everyone sit"], ["StandAll", "", "Team: everyone stand"]
               , ["Arrange", "^!g", "Arrange / re-sync"], ["ToggleLayout", "^!s", "Next layout"]
               , ["LaunchAll", "^!l", "Launch All"], ["Accounts", "^!a", "Slots (names & usernames)"]
               , ["RestoreBorders", "^!u", "Restore borders"], ["ControlPanel", "^!h", "Control panel"]
@@ -3734,7 +4262,8 @@ HotkeyHelp(*) {
               , ["ToggleAudio", "^!o", "Sound: active client only / all"]
               , ["SetupWizard", "^!w", "Setup Wizard"]
               , ["ReloadConfig", "^!r", "Reload config"], ["Quit", "^!q", "Quit"]]
-        t .= Nice(H(row[1], row[2])) "`t" row[3] "`n"
+        if ((k := H(row[1], row[2])) != "")
+            t .= Nice(k) "`t" row[3] "`n"
     t .= Nice(H("MouseBroadcast", "XButton1")) "`tOne mirrored click"
     MsgBox(t "`n`n" APP " " APP_VERSION, APP " - Hotkeys", "Iconi")
 }
@@ -3806,9 +4335,11 @@ BuildPanel() {
     PB("x+8 yp " bw, "Setup Wizard...", ShowWizard, TipText("Set everything up step by step", "SetupWizard", "^!w"))
     PB("x+8 yp " bw, "Edit Config", EditConfig, TipText("Open MMORPGBoxer.ini in Notepad"))
     PB("x+8 yp " bw, "Reload Config", (*) => Reload(), TipText("Restart MMORPG Boxer to apply changes made in MMORPGBoxer.ini", "ReloadConfig", "^!r"))
-    PB("xs y+8 " bw, "Diagnostics...", Diagnostics, TipText("Write a report of every window and the recent log (to send when something's wrong)"))
+    PB("xs y+8 " bw, "Team && Performance...", ShowPerf, TipText("In-game names, follow/assist, CPU cores, frame-rate caps and per-character EverQuest settings"))
+    PB("x+8 yp " bw, "Team Commands...", TeamMenu, TipText("Follow me, stop following, assist me, attack, sit, stand", "FollowMe", "^!f"))
+    PB("x+8 yp " bw, "Diagnostics...", Diagnostics, TipText("Write a report of every window and the recent log (to send when something's wrong)"))
     PB("x+8 yp " bw, "Check for Updates", (*) => CheckForUpdates(false), TipText("Look for a newer version of MMORPG Boxer"))
-    tipBox := Panel.AddCheckbox("x+12 yp w300 h32" (TipsOn ? " Checked" : ""), "Show tooltips with shortcuts")
+    tipBox := Panel.AddCheckbox("xs y+8 w300 h28" (TipsOn ? " Checked" : ""), "Show tooltips with shortcuts")
     tipBox.OnEvent("Click", SetTipsOn)
     AddTip(tipBox, "Show what each button does and its keyboard shortcut when you point at it")
     ; layout and slot count on their own row
@@ -3997,6 +4528,28 @@ RunAsAdmin=1
 3=DPS1
 4=DPS2
 
+[Profiles]
+; 1 = each character keeps its own eqclient.ini (and eqlsPlayerData.ini) in
+; the Profiles folder; the one you're playing is put in place automatically
+PerCharacter=1
+
+[InGameNames]
+; slot=character name in EverQuest (used by follow / assist)
+
+[CPU]
+; Slot<n>=all, or logical core numbers like 0-3 or 4-11,14
+; Priority<n>=Normal | Above normal | High | Below normal
+; MainSlot = the slot "Auto-assign CPU Cores" gives cores of its own
+MainSlot=1
+
+[FPS]
+; Slot<n>=<max FPS while active>,<max FPS in the background>
+; (EverQuest's own MaxFPS / MaxBGFPS, set before each client starts)
+
+[Team]
+; key that walks backwards in EverQuest (breaks /follow)
+StopFollowKey=Down
+
 [Groups]
 ; Name=slot,slot,...  Use group names as key map targets.
 Healers=2
@@ -4136,6 +4689,15 @@ ToggleVFX=^!v
 CreateView=^!c
 DeleteView=^!d
 ViewManager=^!e
+; Team helpers (type EverQuest's /target, /follow, /assist ... into the others)
+FollowMe=^!f
+StopFollow=^!x
+AssistMe=^!t
+FollowLine=
+AttackMyTarget=
+BackOff=
+SitAll=
+StandAll=
 LaunchAll=^!l
 ; Open the Slots window (character names and usernames)
 Accounts=^!a

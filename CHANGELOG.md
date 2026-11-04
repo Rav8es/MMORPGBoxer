@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0
+- **Separate EverQuest settings for each character:** each character keeps its own eqclient.ini and eqlsPlayerData.ini in a Profiles folder. They're put in place before the client starts, and while you play eqclient.ini holds the settings of the client you're in. A client that logs out now gets its own resolution back instead of another slot's. On by default; the original eqclient.ini is backed up to Profiles\_original.
+- **CPU cores and priority per slot,** applied to running clients straight away. **Auto-assign CPU Cores** gives your main slot cores of its own.
+- **Frame-rate caps per slot** for the active and background window (EverQuest's MaxFPS and MaxBGFPS, set before each client starts).
+- **Team commands:** follow me (Ctrl+Alt+F), follow in a line, stop following (Ctrl+Alt+X), assist me (Ctrl+Alt+T), attack my target, back off, everyone sit or stand. They type EverQuest's own commands into the other clients. A Team button on the toolbar and Team Commands... in the control panel.
+- New **Team & Performance** window (control panel and tray menu) for in-game names, CPU, frame-rate caps and the per-character settings switch.
+
 ## 1.3.0
 - EQ Boxer Pro is now **MMORPG Boxer**. The app, installer, Start Menu entries and files have the new name: `MMORPGBoxer.ahk`, `MMORPGBoxer.ini`, `MMORPGBoxer.log`, and `MMORPGBoxer-Setup.exe`. It installs to `%LOCALAPPDATA%\Programs\MMORPG Boxer`.
 - Updating from EQ Boxer Pro moves your settings and log over, keeps your desktop shortcut and "start with Windows" choice, and removes the old copy.
