@@ -1,4 +1,4 @@
-# EQ Boxer Pro
+# MMORPG Boxer
 
 A multiboxing tool for **EverQuest Live** on Windows. It runs on AutoHotkey v2 and is configured with a single INI file.
 
@@ -7,6 +7,8 @@ It helps you run several EverQuest clients at once:
 - Switch between them instantly.
 - Copy key presses to all of them.
 - Show and click one client's hotbar inside another.
+
+MMORPG Boxer was called **EQ Boxer Pro** up to version 1.2.2. Updating, or running the new installer, moves your settings over and removes the old copy.
 
 ---
 
@@ -23,7 +25,7 @@ It helps you run several EverQuest clients at once:
 10. [Mirror mode and mouse broadcast](#10-mirror-mode-and-mouse-broadcast)
 11. [Clickable views (Video FX)](#11-clickable-views-video-fx)
 12. [Key maps](#12-key-maps)
-13. [Configuration reference (EQBoxer.ini)](#13-configuration-reference-eqboxerini)
+13. [Configuration reference (MMORPGBoxer.ini)](#13-configuration-reference-mmorpgboxerini)
 14. [Troubleshooting](#14-troubleshooting)
 15. [Rules and fair play](#15-rules-and-fair-play)
 
@@ -38,37 +40,39 @@ It helps you run several EverQuest clients at once:
 ## 2. Installation
 
 ### With the installer (recommended)
-1. Run **EQBoxerPro-Setup.exe**. No administrator rights are needed to install.
+1. Run **MMORPGBoxer-Setup.exe**. No administrator rights are needed to install.
    - Windows SmartScreen may say it *protected your PC*, because the installer isn't code-signed. Click **More info → Run anyway**.
 2. Choose what to install:
-   - **EQ Boxer Pro** (always): the app, its icon, this guide, and its own private copy of **AutoHotkey v2**.
-   - **AutoHotkey v2 with AutoHotkey Dash** (on by default): installs AutoHotkey for your Windows user, using AutoHotkey's own installer. That adds **AutoHotkey Dash** and the AutoHotkey help to the Start Menu, and lets you open `.ahk` scripts by double-clicking. EQ Boxer Pro works with or without it.
+   - **MMORPG Boxer** (always): the app, its icon, this guide, and its own private copy of **AutoHotkey v2**.
+   - **AutoHotkey v2 with AutoHotkey Dash** (on by default): installs AutoHotkey for your Windows user, using AutoHotkey's own installer. That adds **AutoHotkey Dash** and the AutoHotkey help to the Start Menu, and lets you open `.ahk` scripts by double-clicking. MMORPG Boxer works with or without it.
    - **Desktop shortcut** (on by default).
-   - **Start EQ Boxer Pro when Windows starts** (off by default). Because the app runs as administrator, Windows asks for permission each time you sign in.
-3. Pick the install folder. The default is `%LOCALAPPDATA%\Programs\EQ Boxer Pro`.
-4. On the last page, leave **Start EQ Boxer Pro** ticked. Windows asks for administrator permission; click **Yes**. EverQuest runs as administrator, and the app can only send keys to it if it does too.
+   - **Start MMORPG Boxer when Windows starts** (off by default). Because the app runs as administrator, Windows asks for permission each time you sign in.
+3. Pick the install folder. The default is `%LOCALAPPDATA%\Programs\MMORPG Boxer`.
+4. On the last page, leave **Start MMORPG Boxer** ticked. Windows asks for administrator permission; click **Yes**. EverQuest runs as administrator, and the app can only send keys to it if it does too.
 5. The **Setup Wizard** opens and walks you through the rest (section 3.0).
 
-**Start Menu → EQ Boxer Pro** has shortcuts to the app, this guide (**EQ Boxer Pro Guide**), the settings folder and the uninstaller. **Settings** (`EQBoxer.ini`) and the log live in the install folder. Installing a newer version over the top keeps them.
+**Start Menu → MMORPG Boxer** has shortcuts to the app, this guide (**MMORPG Boxer Guide**), the settings folder and the uninstaller. **Settings** (`MMORPGBoxer.ini`) and the log live in the install folder. Installing a newer version over the top keeps them.
 
-**Uninstall:** use *Settings → Apps → Installed apps → EQ Boxer Pro → Uninstall*, or the Start Menu shortcut. It asks whether to also delete your settings. If you installed AutoHotkey with Dash, it stays installed; uninstall it separately under *Installed apps → AutoHotkey* if you want.
+**Coming from EQ Boxer Pro:** the installer finds your old install, copies `EQBoxer.ini` to `MMORPGBoxer.ini` (and the log), keeps "start when Windows starts" and the desktop shortcut if you had them, and removes the old files, shortcuts and uninstall entry. Copies without the installer pick up an `EQBoxer.ini` in the same folder by themselves.
+
+**Uninstall:** use *Settings → Apps → Installed apps → MMORPG Boxer → Uninstall*, or the Start Menu shortcut. It asks whether to also delete your settings. If you installed AutoHotkey with Dash, it stays installed; uninstall it separately under *Installed apps → AutoHotkey* if you want.
 
 ### Without the installer
 1. Install AutoHotkey v2 from https://www.autohotkey.com.
-2. Put `EQBoxerPro.ahk` in its own folder (for example `Documents\EQBoxer`) and double-click it. Accept the administrator prompt.
-3. On the first run the app creates **`EQBoxer.ini`** in the same folder.
+2. Put `MMORPGBoxer.ahk` in its own folder (for example `Documents\MMORPGBoxer`) and double-click it. Accept the administrator prompt.
+3. On the first run the app creates **`MMORPGBoxer.ini`** in the same folder.
 
 ## 3. First-time setup
 
 ### 3.0 Setup Wizard (easiest)
-The **Setup Wizard** opens by itself the first time you start EQ Boxer. Open it again any time with **Ctrl+Alt+W**, the **Setup Wizard...** button in the control panel, or the tray menu. It walks you through six steps:
+The **Setup Wizard** opens by itself the first time you start MMORPG Boxer. Open it again any time with **Ctrl+Alt+W**, the **Setup Wizard...** button in the control panel, or the tray menu. It walks you through six steps:
 
-1. **Welcome:** your EverQuest folder (with a **Browse...** button and a check that `eqgame.exe` is there), and whether EQ Boxer runs as administrator.
+1. **Welcome:** your EverQuest folder (with a **Browse...** button and a check that `eqgame.exe` is there), and whether MMORPG Boxer runs as administrator.
 2. **Number of slots:** how many clients you play at once (1–8).
 3. **Characters & accounts:** a character name and an account name for each slot. No passwords are stored.
 4. **Layout:** pick a layout and see a **live preview** of where each slot will go, labelled with its character names. Choose whether windows stay above the taskbar and whether borders are removed.
 5. **Features:** sound only from the active client, the coloured frame, the button bar, opening the control panel on start, filling in the account name at login, and which keys are broadcast.
-6. **Finish:** a summary of everything. Click **Finish** to save, and EQ Boxer restarts with your settings.
+6. **Finish:** a summary of everything. Click **Finish** to save, and MMORPG Boxer restarts with your settings.
 
 **Cancel** closes the wizard without saving and stops it opening by itself. You'll still need to do the scaling step in 3.1 yourself, since the wizard can't change Windows settings for EverQuest.
 
@@ -92,7 +96,7 @@ WindowedHeight=1080
 ```
 You don't need to set `WindowedModeXOffset` and `WindowedModeYOffset` yourself. With `PrepareIni=1`, the app writes them before each client starts, so each client opens in its own slot.
 
-### 3.3 Set up EQBoxer.ini
+### 3.3 Set up MMORPGBoxer.ini
 Press **Ctrl+Alt+H** to open the control panel, then click **Edit Config**.
 1. Check that **`EQPath`** points to your EverQuest folder.
 2. Set **`Slots`** to the number of clients you play, from 1 to 8.
@@ -107,7 +111,7 @@ Press **Ctrl+Alt+H** to open the control panel, then click **Edit Config**.
 4. Save the file and press **Ctrl+Alt+R** to reload.
 
 ## 4. Daily use
-1. Start `EQBoxerPro.ahk`.
+1. Start `MMORPGBoxer.ahk`.
 2. Start your clients:
    - **Launch All (Ctrl+Alt+L):** starts one client for each named slot, in order. Each client opens in its slot.
    - **Or LaunchPad:** start clients **one at a time**, waiting until each window appears before starting the next. The app always prepares eqclient.ini for the next empty slot.
@@ -140,7 +144,7 @@ Press **Ctrl+Alt+H** to open the control panel, then click **Edit Config**.
 | Ctrl+Alt+O | `ToggleAudio` | Sound from the active client only / from all clients |
 | Ctrl+Alt+W | `SetupWizard` | Open the Setup Wizard |
 | Ctrl+Alt+P | `Pause` | Pause/resume **all** app hotkeys |
-| Ctrl+Alt+R | `ReloadConfig` | Reload EQBoxer.ini |
+| Ctrl+Alt+R | `ReloadConfig` | Reload MMORPGBoxer.ini |
 | Ctrl+Alt+Q | `Quit` | Exit the app |
 
 Broadcast, key maps and mouse broadcast only work while an EverQuest window is active. The other hotkeys work from anywhere.
@@ -148,7 +152,7 @@ Broadcast, key maps and mouse broadcast only work while an EverQuest window is a
 **Tooltips:** point at any button on the toolbar or in the control panel to see what it does and its keyboard shortcut. Turn them off or on with **Show tooltips with shortcuts** in the control panel (`ShowTooltips` in `[General]`). The tooltips show the shortcuts you've actually set in `[Hotkeys]`.
 
 ## 6. Control panel and tray menu
-The panel opens automatically when EQ Boxer starts (turn this off with `ShowPanelOnStart=0` in `[General]`). Open or close it any time with **Ctrl+Alt+H**, the **Panel** button on the toolbar, or by double-clicking the tray icon. Closing it with the X only hides it; EQ Boxer keeps running in the tray.
+The panel opens automatically when MMORPG Boxer starts (turn this off with `ShowPanelOnStart=0` in `[General]`). Open or close it any time with **Ctrl+Alt+H**, the **Panel** button on the toolbar, or by double-clicking the tray icon. Closing it with the X only hides it; MMORPG Boxer keeps running in the tray.
 
 - **Slot list:** every slot with its character name, account name, resolution and whether it's running. Click a slot to edit its names in the boxes below the list. Double-click a slot to switch to that client.
 - **Layout dropdown:** choose Grid, Swap, a preset, or your own saved layout.
@@ -163,7 +167,7 @@ The tray menu (right-click the tray icon) has Control Panel, Launch All, Arrange
 By default (`FollowActive=1` in `[Audio]`), only the client you're playing in makes sound. All the other EverQuest clients are muted, and the sound follows you as you switch.
 - Switch it with **Ctrl+Alt+O** or the **Sound** button on the toolbar. **Sound: Active** means only the active client is heard, and **Sound: All** means every client is heard.
 - If you click away from EverQuest (to Discord, a browser, the desktop), the last client you played keeps its sound.
-- It uses the same per-program mute as the Windows **Volume Mixer**, so you'll see the other `eqgame.exe` entries muted there. When you turn it off or quit EQ Boxer, every client is unmuted.
+- It uses the same per-program mute as the Windows **Volume Mixer**, so you'll see the other `eqgame.exe` entries muted there. When you turn it off or quit MMORPG Boxer, every client is unmuted.
 - It works on your **default playback device**. If EverQuest plays through a different device, set that device as the default in Windows Sound settings.
 
 ### On-screen toolbar
@@ -192,7 +196,7 @@ A button bar that stays on top of the game, so you don't need to remember hotkey
 | **Horizontal / vertical** | Right-click → **Lay out vertically / horizontally** |
 | **Back to defaults** | Right-click → **Reset look** |
 
-Each colour menu has 15 ready-made colours plus **Custom...**, which opens the Windows colour picker. You can also right-click by clicking the **Bar** button. Every setting is saved in `[Toolbar]` in EQBoxer.ini.
+Each colour menu has 15 ready-made colours plus **Custom...**, which opens the Windows colour picker. You can also right-click by clicking the **Bar** button. Every setting is saved in `[Toolbar]` in MMORPGBoxer.ini.
 
 While broadcasting is on, a **BROADCAST ON** label stays at the top-left of the screen.
 
@@ -224,7 +228,7 @@ Window titles, the toolbar and Launch All update immediately.
 
 - **Account names:** Launch All starts each client with EverQuest's own `/login:<account>` option, so the account name is already in the login box. You type the password yourself.
 - **No passwords:** the app doesn't store any passwords. Earlier versions could save them in Windows Credential Manager. This version deletes any it finds and keeps only the username.
-- **Where they're saved:** usernames live in `[Usernames]` in EQBoxer.ini, and names in `[Characters]`.
+- **Where they're saved:** usernames live in `[Usernames]` in MMORPGBoxer.ini, and names in `[Characters]`.
 - **Skipping a slot:** an empty name means Launch All skips that slot.
 
 ## 8. Window layouts
@@ -250,7 +254,7 @@ Each slot can have its own game resolution. EverQuest draws at exactly the size 
 - **Choices:** **Fill slot** (default) uses the slot's whole space in the layout. You can also pick a common size like 1920x1080, 2560x1440, 3440x1440 or 1280x720, or **Custom...** to type any size, e.g. 2200x1000.
 - **Placement:** a slot with its own resolution is **centred in its slot's space**, and kept on screen if it's bigger.
 - **Running clients change straight away.** The app resizes the window and tells EverQuest to redraw at the new size.
-- Stored in `[Resolutions]` in EQBoxer.ini as `slot=WidthxHeight` (empty = fill slot).
+- Stored in `[Resolutions]` in MMORPGBoxer.ini as `slot=WidthxHeight` (empty = fill slot).
 
 ### Taskbar
 With `UseWorkArea=1` (the default), every layout fits in the area **above the taskbar**, so the bottom row is never hidden behind it. The windows are then slightly shorter than the full screen. For example, with a 72-pixel taskbar a 2×2 grid uses 1920×1044 windows. **Restart your clients** after changing this, so EverQuest starts at the new size.
@@ -286,8 +290,8 @@ Slots that a layout has no place for are left where they are.
 **Important: restart the clients after changing layout.** EverQuest picks its drawing size and mouse position when it starts. Before each client launches, the app writes that slot's size and position for the chosen layout into eqclient.ini. Clients that were already running get moved and stretched, and their mouse may be off until they're restarted.
 
 ### Your own layouts
-- **Easiest:** turn borders on (Ctrl+Alt+U), drag and size each client where you want it, then click **Save Layout...** and give it a name. It's added to the dropdown and saved in EQBoxer.ini.
-- **By hand:** add a section to EQBoxer.ini (pixels from the monitor's top-left, as `x,y,width,height`):
+- **Easiest:** turn borders on (Ctrl+Alt+U), drag and size each client where you want it, then click **Save Layout...** and give it a name. It's added to the dropdown and saved in MMORPGBoxer.ini.
+- **By hand:** add a section to MMORPGBoxer.ini (pixels from the monitor's top-left, as `x,y,width,height`):
   ```
   [Layout.My Layout]
   1=0,0,3840,1080
@@ -372,7 +376,7 @@ The Switch method presses keys once, so **holding W to run is not copied**. To m
 ### 9.7 If broadcasting still doesn't work
 | Symptom | Fix |
 |---|---|
-| Keys do nothing at all in EQ, and no "Broadcast 1 -> …" message appears | EverQuest runs as administrator, so EQ Boxer must too. Leave `RunAsAdmin=1` and accept the Windows prompt when the app starts. The startup message says **(admin)** when this is right. |
+| Keys do nothing at all in EQ, and no "Broadcast 1 -> …" message appears | EverQuest runs as administrator, so MMORPG Boxer must too. Leave `RunAsAdmin=1` and accept the Windows prompt when the app starts. The startup message says **(admin)** when this is right. |
 | No **BROADCAST ON** label | Click into an EQ window first, then press Ctrl+Alt+B. Check that the app isn't paused (Ctrl+Alt+P). |
 | Label shows, but other clients don't react | Make sure `Method=Switch` (or that the line is missing). Raise `SwitchDelay` to 60–100 and reload. |
 | The other clients react, but the client you pressed the key in doesn't (for example `=` Sit/Stand only sits slots 2 and 3) | That client lost focus before it read the key. Raise `StayDelay` in `[Broadcast]` (default 50) to 80–120 and reload. |
@@ -414,7 +418,7 @@ Open it with **Ctrl+Alt+E**, the **Edit Views** button on the toolbar, or **Clic
 - **Show Where:** flashes a red box where the selected view is.
 - **Copies from slot:** make the selected view copy the same area from a different client.
 - **Opacity:** how see-through the selected view is.
-- **Show views**, **Show views when EQ Boxer Pro starts**, and **Clicking a view** (Switch, Send or Focus; see 11.5).
+- **Show views**, **Show views when MMORPG Boxer starts**, and **Clicking a view** (Switch, Send or Focus; see 11.5).
 
 The window hides itself while you drag boxes on screen and comes back afterwards.
 
@@ -496,7 +500,7 @@ DPS=3,4
 Party=1,2,3,4
 ```
 
-## 13. Configuration reference (EQBoxer.ini)
+## 13. Configuration reference (MMORPGBoxer.ini)
 Keep comments on their own lines. A `;` after a value becomes part of the value. After editing, press **Ctrl+Alt+R**.
 
 ### [General]
@@ -516,9 +520,9 @@ Keep comments on their own lines. A `;` after a value becomes part of the value.
 | SettleTime | `15000` | ms a new client must be stable before arranging |
 | PrepareIni | `1` | Write slot position into eqclient.ini before launch |
 | UseWorkArea | `1` | Fit layouts above the taskbar (1) or use the whole screen (0) |
-| ShowPanelOnStart | `1` | Open the control panel when EQ Boxer starts |
+| ShowPanelOnStart | `1` | Open the control panel when MMORPG Boxer starts |
 | ShowTooltips | `1` | Show what each button does and its shortcut when you point at it |
-| RunAsAdmin | `1` | Restart EQ Boxer as administrator (needed when EverQuest runs as admin) |
+| RunAsAdmin | `1` | Restart MMORPG Boxer as administrator (needed when EverQuest runs as admin) |
 
 ### [Characters]
 `slot=name`, for example `1=Tank`. You can also edit these in the control panel. Launch All starts a client for every named slot.
@@ -587,7 +591,7 @@ See [Clickable views](#11-clickable-views-video-fx).
 
 | Problem | Cause and fix |
 |---|---|
-| **"This function declaration conflicts…"** error | You have an old copy of the script. Use the latest EQBoxerPro.ahk. |
+| **"This function declaration conflicts…"** error | You have an old copy of the script. Use the latest MMORPGBoxer.ahk. |
 | Mouse lines up in only one client | Set the DPI override to **Application** (section 3.1). Then close **all** clients and relaunch with the app running, so each one starts in its slot. |
 | Mouse is off in one client | That client was moved after it started. Close it and relaunch it with the app running. Don't drag clients. |
 | One client draws a smaller picture than its window (black space right and below) | It was arranged while still starting up. **Quick fix:** in that client press Alt+O → Display and choose its windowed resolution again, or close it and start it again. To prevent it, raise `SettleTime` (try 20000) and start clients with Launch All. |
@@ -598,20 +602,20 @@ See [Clickable views](#11-clickable-views-video-fx).
 | A client isn't arranged | It's still settling (wait about 8 s), it's beyond the `Slots` count, or it kept fighting the layout. Press Ctrl+Alt+G. |
 | Launch All says it can't find eqgame.exe | Fix `EQPath`. |
 | Launch All starts the client but it closes | The game needs patching. Run LaunchPad once, then try again. |
-| Broadcast or key maps do nothing | Run EQ Boxer as administrator (`RunAsAdmin=1`, accept the Windows prompt). Then see [9.7](#97-if-broadcasting-still-doesnt-work). |
+| Broadcast or key maps do nothing | Run MMORPG Boxer as administrator (`RunAsAdmin=1`, accept the Windows prompt). Then see [9.7](#97-if-broadcasting-still-doesnt-work). |
 | Typing in chat spams other clients | Pause the app with Ctrl+Alt+P while typing, or turn broadcast off. |
 | A hotkey error appears at startup | A hotkey in the INI is invalid. Fix or clear it. |
 | Views are black | The source client is minimized or closed. |
 | A client's picture is stretched or cut off after logging out or changing screens | EverQuest reloaded another slot's resolution from the shared eqclient.ini. The app re-syncs the client automatically a few seconds later; if it doesn't, press **Ctrl+Alt+G** (Arrange). |
-| A view shows a different area than you selected | Update to 1.1.6 or later; views now line up with your selection automatically. If one is still off, send EQBoxer.log: it has a "view ..." line for each view. |
+| A view shows a different area than you selected | Update to 1.1.6 or later; views now line up with your selection automatically. If one is still off, send MMORPGBoxer.log: it has a "view ..." line for each view. |
 | A view click lands in the wrong place | Delete it (Ctrl+Alt+D) and re-create it after the clients are arranged. |
 | Account name isn't filled in | Set it in the control panel (click the slot, type the Account name, Save), and start clients with **Launch All**. Clients started from LaunchPad don't get it. |
-| Control panel says "opened off-slot, restart it" | That client opened somewhere other than its slot, so its mouse is off. Close it and start it again with EQ Boxer running. Start clients one at a time, or use Launch All. |
-| Clients stay muted after EQ Boxer crashed | Open the Windows Volume Mixer and unmute the `eqgame.exe` entries, or start EQ Boxer and press Ctrl+Alt+O twice. |
+| Control panel says "opened off-slot, restart it" | That client opened somewhere other than its slot, so its mouse is off. Close it and start it again with MMORPG Boxer running. Start clients one at a time, or use Launch All. |
+| Clients stay muted after MMORPG Boxer crashed | Open the Windows Volume Mixer and unmute the `eqgame.exe` entries, or start MMORPG Boxer and press Ctrl+Alt+O twice. |
 | Nothing responds | The app may be paused (Ctrl+Alt+P), or not running. Check for the tray icon. |
 
 ### Updates
-EQ Boxer Pro updates itself from its GitHub releases.
+MMORPG Boxer updates itself from its GitHub releases.
 - **Automatic check:** about 15 seconds after it starts, it checks for a newer version (`CheckOnStart=1` in `[Update]`). If there is one, a window shows **what's new**, with **Update now**, **Later** and **Skip this version**.
 - **Check by hand:** the **Check for Updates** button in the control panel, or **Check for Updates...** in the tray menu.
 - **Update now:**
@@ -623,10 +627,10 @@ EQ Boxer Pro updates itself from its GitHub releases.
 - `[Update]` settings: `Repo` (the GitHub repository, `owner/name`; empty uses the built-in one), `CheckOnStart` (1/0), `SkipVersion` (set by *Skip this version*).
 
 ### Diagnostics
-If windows don't end up where they should, click **Diagnostics...** in the control panel (or the tray menu). It writes **EQBoxer-diagnostics.txt** next to the script, opens it in Notepad, and copies it to the clipboard. It shows:
+If windows don't end up where they should, click **Diagnostics...** in the control panel (or the tray menu). It writes **MMORPGBoxer-diagnostics.txt** next to the script, opens it in Notepad, and copies it to the clipboard. It shows:
 - your screen, border size and eqclient.ini values,
 - for every slot, where it **should** be and where its window and picture **actually** are,
-- the recent **EQBoxer.log**: every client found, settled, arranged, and anything that moved it afterwards (with a check 1 s and 5 s after each arrangement).
+- the recent **MMORPGBoxer.log**: every client found, settled, arranged, and anything that moved it afterwards (with a check 1 s and 5 s after each arrangement).
 
 Send that file to whoever is helping you fix a layout problem. The log is cleared automatically when it grows past 1 MB.
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.0
+- EQ Boxer Pro is now **MMORPG Boxer**. The app, installer, Start Menu entries and files have the new name: `MMORPGBoxer.ahk`, `MMORPGBoxer.ini`, `MMORPGBoxer.log`, and `MMORPGBoxer-Setup.exe`. It installs to `%LOCALAPPDATA%\Programs\MMORPG Boxer`.
+- Updating from EQ Boxer Pro moves your settings and log over, keeps your desktop shortcut and "start with Windows" choice, and removes the old copy.
+- Updates now come from the **Rav8es/MMORPGBoxer** repository (the old address keeps working).
+
 ## 1.2.2
 - Fix: a client's picture could end up stretched after logging out to server select (seen on the full-width slot 1). EverQuest reloads its resolution from eqclient.ini when it changes screens, and that shared file holds another slot's size. EQ Boxer Pro now notices EverQuest changing screens and makes that client redraw at its real window size a few seconds later.
 - **Arrange** (Ctrl+Alt+G) now also makes every client redraw at its window size, so it fixes a stretched picture straight away.

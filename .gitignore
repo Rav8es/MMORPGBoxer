@@ -3,6 +3,6 @@ dist/
 installer/app/
 installer/.cache/
 # personal settings / logs if the script is run from the repo folder
-EQBoxer.ini
-EQBoxer.log
-EQBoxer-diagnostics.txt
+MMORPGBoxer.ini
+MMORPGBoxer.log
+MMORPGBoxer-diagnostics.txt

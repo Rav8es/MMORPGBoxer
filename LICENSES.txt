@@ -1,9 +1,9 @@
-EQ Boxer Pro - third-party software
+MMORPG Boxer - third-party software
 ===================================
 
 AutoHotkey v2.0.31
 ------------------
-EQ Boxer Pro is an AutoHotkey v2 script. This package includes an unmodified
+MMORPG Boxer is an AutoHotkey v2 script. This package includes an unmodified
 copy of AutoHotkey v2.0.31 (folder "AutoHotkey"), including AutoHotkey Dash,
 taken from the official release:
   https://github.com/AutoHotkey/AutoHotkey/releases/tag/v2.0.31
@@ -19,5 +19,5 @@ NSIS
 The installer was built with NSIS (Nullsoft Scriptable Install System),
 https://nsis.sourceforge.io - zlib/libpng licence.
 
-EverQuest is a trademark of its owner. EQ Boxer Pro is an independent fan-made
+EverQuest is a trademark of its owner. MMORPG Boxer is an independent fan-made
 tool and is not affiliated with or endorsed by Daybreak Game Company.

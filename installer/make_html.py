@@ -14,7 +14,7 @@ th,td{border:1px solid #d5d9e3;padding:6px 10px;text-align:left;vertical-align:t
 th{background:#eef1f8}
 tr:nth-child(even) td{background:#f7f8fb}
 a{color:#1e5aa8}'''
-page = (f'<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8"><title>EQ Boxer Pro - Guide</title>\n'
+page = (f'<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8"><title>MMORPG Boxer - Guide</title>\n'
         f'<style>{css}</style></head><body>\n{html}\n</body></html>')
 ids = set(re.findall(r'id="([^"]+)"', page))
 bad = sorted(set(re.findall(r'href="#([^"]+)"', page)) - ids)

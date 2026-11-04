@@ -2,7 +2,7 @@
 #SingleInstance Force
 Persistent
 ; =====================================================================
-;  EQ Boxer Pro - a multiboxing tool for EverQuest Live
+;  MMORPG Boxer - a multiboxing tool for EverQuest Live
 ;
 ;  Features
 ;    - Character slots and a launcher (Launch All)
@@ -18,7 +18,7 @@ Persistent
 ;      (Windows DWM thumbnails - no injection into the game)
 ;    - Control panel and tray menu
 ;
-;  Everything is configured in EQBoxer.ini (created on first run).
+;  Everything is configured in MMORPGBoxer.ini (created on first run).
 ;  Design rule: one key press = one action per client. No delays, no
 ;  timed sequences, nothing runs without you pressing a key.
 ; =====================================================================
@@ -30,15 +30,21 @@ CoordMode("Mouse", "Client")
 CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
-global APP := "EQ Boxer Pro"
-global APP_VERSION := "1.2.2"
+global APP := "MMORPG Boxer"
+global APP_VERSION := "1.3.0"
 ; GitHub repository ("owner/name") that updates are published to
-global DEFAULT_UPDATE_REPO := "Rav8es/BoxerPro"
+global DEFAULT_UPDATE_REPO := "Rav8es/MMORPGBoxer"
+global OLD_UPDATE_REPO := "Rav8es/BoxerPro"     ; its name before the rename
 ; installed copies ship an icon next to the script
-if FileExist(A_ScriptDir "\EQBoxerPro.ico")
-    TraySetIcon(A_ScriptDir "\EQBoxerPro.ico")
-global CFG_FILE := A_ScriptDir "\EQBoxer.ini"
-global LOG_FILE := A_ScriptDir "\EQBoxer.log"     ; window placement log (Diagnostics)
+if FileExist(A_ScriptDir "\MMORPGBoxer.ico")
+    TraySetIcon(A_ScriptDir "\MMORPGBoxer.ico")
+global CFG_FILE := A_ScriptDir "\MMORPGBoxer.ini"
+global LOG_FILE := A_ScriptDir "\MMORPGBoxer.log"     ; window placement log (Diagnostics)
+; This app used to be called EQ Boxer Pro: pick up its settings and log.
+if (!FileExist(CFG_FILE) && FileExist(A_ScriptDir "\EQBoxer.ini"))
+    try FileCopy(A_ScriptDir "\EQBoxer.ini", CFG_FILE)
+if (!FileExist(LOG_FILE) && FileExist(A_ScriptDir "\EQBoxer.log"))
+    try FileCopy(A_ScriptDir "\EQBoxer.log", LOG_FILE)
 if !FileExist(CFG_FILE)
     WriteDefaultConfig()
 
@@ -522,7 +528,7 @@ CheckDpi() {
 }
 
 ; ------------------------------ Diagnostics ------------------------------
-; Window events are written to EQBoxer.log so placement problems can be seen
+; Window events are written to MMORPGBoxer.log so placement problems can be seen
 ; exactly (what EverQuest did to a window, and when).
 WriteLog(msg) {
     try FileAppend(FormatTime(, "HH:mm:ss") "." Format("{:03}", A_MSec) "  " msg "`n", LOG_FILE, "UTF-8")
@@ -543,7 +549,7 @@ WinDesc(id) {
 }
 
 ; Writes a report (settings, every slot's window vs its slot, recent log)
-; to EQBoxer-diagnostics.txt, copies it to the clipboard and opens it.
+; to MMORPGBoxer-diagnostics.txt, copies it to the clipboard and opens it.
 Diagnostics(*) {
     t := APP " diagnostics  " FormatTime(, "yyyy-MM-dd HH:mm:ss") "`r`n"
     t .= "Admin: " (A_IsAdmin ? "yes" : "no") "   Screen DPI: " A_ScreenDPI "   Layout: " Layout "   Slots: " MAX_SLOTS "`r`n"
@@ -583,21 +589,21 @@ Diagnostics(*) {
         Loop lines.Length - first + 1
             t .= lines[first + A_Index - 1] "`r`n"
     }
-    out := A_ScriptDir "\EQBoxer-diagnostics.txt"
+    out := A_ScriptDir "\MMORPGBoxer-diagnostics.txt"
     try FileDelete(out)
     FileAppend(t, out, "UTF-8")
     A_Clipboard := t
     Run('notepad.exe "' out '"')
-    Status("Diagnostics saved to EQBoxer-diagnostics.txt and copied to the clipboard", 6000)
+    Status("Diagnostics saved to MMORPGBoxer-diagnostics.txt and copied to the clipboard", 6000)
 }
 
 ; ------------------------------- Updates -------------------------------
 ; New versions are published as GitHub releases. Each release has the
-; installer (EQBoxerPro-Setup.exe) and its SHA-256 checksum
-; (EQBoxerPro-Setup.exe.sha256). The download is only run if the checksums
+; installer (MMORPGBoxer-Setup.exe) and its SHA-256 checksum
+; (MMORPGBoxer-Setup.exe.sha256). The download is only run if the checksums
 ; match. The installer runs silently (/S /UPDATE), keeps the settings and
-; restarts EQ Boxer Pro.
-; An empty "Repo=" line (as in a freshly created EQBoxer.ini) means "use the
+; restarts MMORPG Boxer.
+; An empty "Repo=" line (as in a freshly created MMORPGBoxer.ini) means "use the
 ; built-in repository", the same as no line at all.
 UpdateRepo() {
     v := Trim(Cfg("Update", "Repo", ""))
@@ -607,7 +613,7 @@ UpdateRepo() {
 HttpGet(url) {
     req := ComObject("WinHttp.WinHttpRequest.5.1")
     req.Open("GET", url, false)
-    req.SetRequestHeader("User-Agent", "EQBoxerPro-Updater/" APP_VERSION)
+    req.SetRequestHeader("User-Agent", "MMORPGBoxer-Updater/" APP_VERSION)
     req.SetRequestHeader("Accept", "application/vnd.github+json")
     req.Send()
     if (req.Status != 200)
@@ -673,7 +679,14 @@ CheckForUpdates(silent := false, *) {
         return
     }
     try {
-        json := HttpGet("https://api.github.com/repos/" repo "/releases/latest")
+        try {
+            json := HttpGet("https://api.github.com/repos/" repo "/releases/latest")
+        } catch as e1 {
+            ; before the repository is renamed, releases are under the old name
+            if (repo != DEFAULT_UPDATE_REPO || !InStr(e1.Message, "HTTP 404"))
+                throw e1
+            json := HttpGet("https://api.github.com/repos/" OLD_UPDATE_REPO "/releases/latest")
+        }
     } catch as e {
         WriteLog("update check failed: " e.Message)
         if !silent
@@ -694,8 +707,10 @@ CheckForUpdates(silent := false, *) {
     if (silent && Cfg("Update", "SkipVersion", "") = latest)
         return
     WriteLog("update available: " latest " (running " APP_VERSION ")")
-    ShowUpdatePrompt(latest, JsonStr(json, "body")
-        , FindAsset(json, "EQBoxerPro-Setup.exe"), FindAsset(json, "EQBoxerPro-Setup.exe.sha256"))
+    exe := FindAsset(json, "MMORPGBoxer-Setup.exe"), sha := FindAsset(json, "MMORPGBoxer-Setup.exe.sha256")
+    if (exe = "" || sha = "")      ; a release from before the rename
+        exe := FindAsset(json, "EQBoxerPro-Setup.exe"), sha := FindAsset(json, "EQBoxerPro-Setup.exe.sha256")
+    ShowUpdatePrompt(latest, JsonStr(json, "body"), exe, sha)
 }
 
 ShowUpdatePrompt(ver, notes, exeUrl, shaUrl) {
@@ -704,7 +719,7 @@ ShowUpdatePrompt(ver, notes, exeUrl, shaUrl) {
     g.SetFont("s12 w600")
     g.AddText("w560", APP " " ver " is available")
     g.SetFont("s10 w400")
-    g.AddText("w560 cGray", "You have version " APP_VERSION ". Updating closes EQ Boxer Pro, installs the new version and starts it again. Your settings are kept.")
+    g.AddText("w560 cGray", "You have version " APP_VERSION ". Updating closes MMORPG Boxer, installs the new version and starts it again. Your settings are kept.")
     g.AddText("w560 y+12", "What's new:")
     g.AddEdit("w560 r12 ReadOnly", notes != "" ? notes : "(no notes)")
     g.AddButton("w180 h32 Default", "Update now").OnEvent("Click", (*) => (g.Destroy(), InstallUpdate(ver, exeUrl, shaUrl)))
@@ -719,7 +734,7 @@ InstallUpdate(ver, exeUrl, shaUrl) {
         MsgBox("This release doesn't include the installer and its checksum, so it can't be installed automatically.", APP, "Icon!")
         return
     }
-    tmp := A_Temp "\EQBoxerPro-Setup-" ver ".exe"
+    tmp := A_Temp "\MMORPGBoxer-Setup-" ver ".exe"
     Status("Downloading " APP " " ver "...", 0)
     try {
         try FileDelete(tmp)
@@ -746,7 +761,7 @@ InstallUpdate(ver, exeUrl, shaUrl) {
 }
 
 ; ------------------------------ Accounts ------------------------------
-; Usernames live in [Usernames] in EQBoxer.ini. No passwords are stored.
+; Usernames live in [Usernames] in MMORPGBoxer.ini. No passwords are stored.
 ; The Cred* helpers below only exist to clean up what older versions saved.
 CredTarget(n) => "EQBoxerPro:Slot" n
 
@@ -826,7 +841,7 @@ AccSave() {
 SlotUser(n) => Cfg("Usernames", String(n), "")
 
 ; Earlier versions kept a username + password per slot in Windows Credential
-; Manager. Move the username into EQBoxer.ini and delete the stored password.
+; Manager. Move the username into MMORPGBoxer.ini and delete the stored password.
 MigrateCredentials() {
     Loop 8 {
         a := CredLoad(A_Index)
@@ -1051,7 +1066,7 @@ IsSettled(id) {
 
 ; ------------------- Borderless by clipping (default) -------------------
 ; EverQuest insists on its title bar: when it's removed, EverQuest often puts
-; it straight back and squashes its picture (EQBoxer.log). So by default the
+; it straight back and squashes its picture (MMORPGBoxer.log). So by default the
 ; title bar and border are left alone. The window is placed so its PICTURE
 ; lands exactly on the slot, and Windows is told to show only the picture
 ; area (a window region). The frame still exists for EverQuest, but it's
@@ -1078,7 +1093,7 @@ RegionKey(id) {
 
 ; Windows 10/11 don't draw a window's title bar inside the window: the
 ; Desktop Window Manager (DWM) draws it on top, and it ignores a clip set by
-; another program (EQBoxer.log: clip in place, title bar still showing). So
+; another program (MMORPGBoxer.log: clip in place, title bar still showing). So
 ; DWM is told not to draw this window's frame; Windows then draws a plain
 ; frame inside the window, which the clip does hide. This doesn't change the
 ; window's size or picture area, so EverQuest doesn't react to it.
@@ -1289,7 +1304,7 @@ FollowUpClip(id, x, y, w, h, tries, *) {
         SetTimer(LogAfter.Bind(id, "after the last check"), -900)
 }
 
-; EverQuest's behaviour (seen in EQBoxer.log): whenever its picture area
+; EverQuest's behaviour (seen in MMORPGBoxer.log): whenever its picture area
 ; changes size, it adopts that size as its resolution and puts its title bar
 ; back. So after arranging, check a few times and steer it to "no borders,
 ; picture exactly the slot size", never letting the picture pass through a
@@ -1300,7 +1315,7 @@ FollowUpPlace(id, x, y, w, h, tries, *) {
     static lastSeen := Map()
     n := SlotOf(id)
     ; EverQuest re-applies its frame a moment AFTER a resize. Changing the
-    ; window while it is still doing that gets undone (EQBoxer.log showed it
+    ; window while it is still doing that gets undone (MMORPGBoxer.log showed it
     ; flip back and forth). So only act once the window looked the same on
     ; two checks in a row.
     desc := WinDesc(id)
@@ -1767,7 +1782,7 @@ LaunchAll(*) {
     global Launching
     exe := EQPath "\" EQExe
     if !FileExist(exe) {
-        MsgBox("Can't find " exe "`n`nSet EQPath in EQBoxer.ini.", APP, "Icon!")
+        MsgBox("Can't find " exe "`n`nSet EQPath in MMORPGBoxer.ini.", APP, "Icon!")
         return
     }
     RefreshSlots()
@@ -1860,7 +1875,7 @@ CheckOffSlot() {
         if (!id || OffSlotWarned.Has(id) || !OpenedOffSlot(n))
             continue
         OffSlotWarned[id] := true
-        Status("Slot " n " isn't exactly in its slot - close it and start it again with EQ Boxer running.", 10000)
+        Status("Slot " n " isn't exactly in its slot - close it and start it again with MMORPG Boxer running.", 10000)
         return
     }
 }
@@ -2348,7 +2363,7 @@ VfxPictureOffset(thumb, src) {
         if (Abs(tw - (NumGet(rc, 8, "Int") - el)) <= 1 && Abs(th - (NumGet(rc, 12, "Int") - et)) <= 1)
             return {x: px - el, y: py - et, how: "the visible frame " tw "x" th}
     }
-    ; the clip (EQ Boxer Pro's window region)
+    ; the clip (MMORPG Boxer's window region)
     rk := RegionKey(src)
     if (rk != "") {
         r := StrSplit(rk, ",")
@@ -2640,7 +2655,7 @@ ShowViews(*) {
         VM.show := g.AddCheckbox("xm y+22 w300", "Show views")
         VM.show.OnEvent("Click", VMShowChange)
         AddTip(VM.show, TipText("Show or hide every view", "ToggleVFX", "^!v"))
-        VM.start := g.AddCheckbox("x+8 yp w330", "Show views when EQ Boxer Pro starts")
+        VM.start := g.AddCheckbox("x+8 yp w330", "Show views when MMORPG Boxer starts")
         VM.start.OnEvent("Click", (c, *) => IniWrite(c.Value ? 1 : 0, CFG_FILE, "VFX", "StartOn"))
         AddTip(VM.start, TipText("Turn views on automatically every time the app starts"))
         g.AddText("xm y+12 w160 h28 0x200", "Clicking a view:")
@@ -3059,12 +3074,12 @@ ShowWizard(*) {
     }
 
     ; ---- page 1: EverQuest folder ----
-    P(1, g.AddText("xs ys w620", "This wizard sets up EQ Boxer in a few steps. You can run it again any time from the control panel, the tray menu, or Ctrl+Alt+W.`n`nFirst, where is EverQuest installed? (The folder that contains eqgame.exe.)"))
+    P(1, g.AddText("xs ys w620", "This wizard sets up MMORPG Boxer in a few steps. You can run it again any time from the control panel, the tray menu, or Ctrl+Alt+W.`n`nFirst, where is EverQuest installed? (The folder that contains eqgame.exe.)"))
     Wiz.path := P(1, g.AddEdit("xs y+12 w500", EQPath))
     Wiz.path.OnEvent("Change", WizCheckPath)
     P(1, g.AddButton("x+8 yp-1 w110", "Browse...")).OnEvent("Click", WizBrowse)
     Wiz.pathInfo := P(1, g.AddText("xs y+6 w620", ""))
-    Wiz.admin := P(1, g.AddCheckbox("xs y+16 w620", "Run EQ Boxer as administrator (recommended - EverQuest usually runs as administrator, and keys can only reach it if EQ Boxer does too)"))
+    Wiz.admin := P(1, g.AddCheckbox("xs y+16 w620", "Run MMORPG Boxer as administrator (recommended - EverQuest usually runs as administrator, and keys can only reach it if MMORPG Boxer does too)"))
     Wiz.admin.Value := Cfg("General", "RunAsAdmin", "1") = "1"
 
     ; ---- page 2: number of slots ----
@@ -3115,7 +3130,7 @@ ShowWizard(*) {
     Wiz.frame.Value := Cfg("Highlight", "Enabled", "1") = "1"
     Wiz.toolbar := P(5, g.AddCheckbox("xs y+6 w620", "Show the on-screen button bar"))
     Wiz.toolbar.Value := Cfg("Toolbar", "Show", "1") = "1"
-    Wiz.panel := P(5, g.AddCheckbox("xs y+6 w620", "Open the control panel when EQ Boxer starts"))
+    Wiz.panel := P(5, g.AddCheckbox("xs y+6 w620", "Open the control panel when MMORPG Boxer starts"))
     Wiz.panel.Value := Cfg("General", "ShowPanelOnStart", "1") = "1"
     Wiz.loginArg := P(5, g.AddCheckbox("xs y+6 w620", "Fill in the account name at the login screen (Launch All)"))
     Wiz.loginArg.Value := Cfg("Login", "UseLoginArg", "1") = "1"
@@ -3124,7 +3139,7 @@ ShowWizard(*) {
     P(5, g.AddText("xs y+4 w620 cGray", "Default: the 12 hotbar keys 1-0, - and =."))
 
     ; ---- page 6: summary ----
-    P(6, g.AddText("xs ys w620", "Ready to save. Check the summary below, then click Finish. EQ Boxer will restart with your settings."))
+    P(6, g.AddText("xs ys w620", "Ready to save. Check the summary below, then click Finish. MMORPG Boxer will restart with your settings."))
     Wiz.summary := P(6, g.AddEdit("xs y+10 w620 r12 ReadOnly -Wrap"))
 
     ; ---- buttons (below the tallest page) ----
@@ -3385,7 +3400,7 @@ BuildToolbar() {
               , ["arrange", "Put every client back in its slot and make it redraw at its size`n(fixes a stretched picture)", "Arrange", "^!g"]
               , ["layout", "Switch to the next layout", "ToggleLayout", "^!s"]
               , ["launch", "Start every slot that has a character", "LaunchAll", "^!l"]
-              , ["pause", "Pause or resume all EQ Boxer Pro hotkeys", "Pause", "^!p"]
+              , ["pause", "Pause or resume all MMORPG Boxer hotkeys", "Pause", "^!p"]
               , ["panel", "Show or hide the control panel", "ControlPanel", "^!h"]
               , ["hide", "Hide this toolbar", "ToggleToolbar", "^!k"]]
         if TBBtns.Has(row[1])
@@ -3789,10 +3804,10 @@ BuildPanel() {
     PB("x+8 yp " bw, "Characters...", ShowAccounts, TipText("Character and account names for each slot", "Accounts", "^!a"))
     PB("xs y+8 " bw, "Show/Hide Toolbar", ToggleToolbar, TipText("Show or hide the on-screen button bar", "ToggleToolbar", "^!k"))
     PB("x+8 yp " bw, "Setup Wizard...", ShowWizard, TipText("Set everything up step by step", "SetupWizard", "^!w"))
-    PB("x+8 yp " bw, "Edit Config", EditConfig, TipText("Open EQBoxer.ini in Notepad"))
-    PB("x+8 yp " bw, "Reload Config", (*) => Reload(), TipText("Restart EQ Boxer Pro to apply changes made in EQBoxer.ini", "ReloadConfig", "^!r"))
+    PB("x+8 yp " bw, "Edit Config", EditConfig, TipText("Open MMORPGBoxer.ini in Notepad"))
+    PB("x+8 yp " bw, "Reload Config", (*) => Reload(), TipText("Restart MMORPG Boxer to apply changes made in MMORPGBoxer.ini", "ReloadConfig", "^!r"))
     PB("xs y+8 " bw, "Diagnostics...", Diagnostics, TipText("Write a report of every window and the recent log (to send when something's wrong)"))
-    PB("x+8 yp " bw, "Check for Updates", (*) => CheckForUpdates(false), TipText("Look for a newer version of EQ Boxer Pro"))
+    PB("x+8 yp " bw, "Check for Updates", (*) => CheckForUpdates(false), TipText("Look for a newer version of MMORPG Boxer"))
     tipBox := Panel.AddCheckbox("x+12 yp w300 h32" (TipsOn ? " Checked" : ""), "Show tooltips with shortcuts")
     tipBox.OnEvent("Click", SetTipsOn)
     AddTip(tipBox, "Show what each button does and its keyboard shortcut when you point at it")
@@ -3927,7 +3942,7 @@ WriteDefaultConfig() {
     text := "
 (
 ; =====================================================================
-;  EQ Boxer Pro configuration
+;  MMORPG Boxer configuration
 ;  Edit this file, then press Ctrl+Alt+R (Reload Config).
 ;  Keep comments on their own lines - never after a value.
 ; =====================================================================
@@ -3963,7 +3978,7 @@ SwapOnActivate=1
 SettleTime=15000
 ; Fit layouts in the area above the taskbar (1) or the whole screen (0)
 UseWorkArea=1
-; Open the control panel when EQ Boxer starts (1/0)
+; Open the control panel when MMORPG Boxer starts (1/0)
 ShowPanelOnStart=1
 ; 1 = clients fill their whole slot (they open slightly smaller if needed and
 ; are widened after start-up). 0 = keep a small margin on very wide slots
@@ -3971,7 +3986,7 @@ FillSlots=1
 ; Write the next free slot's position into eqclient.ini before each client
 ; starts, so EverQuest opens in its slot and the mouse lines up (1/0)
 PrepareIni=1
-; Run EQ Boxer as administrator (needed when EverQuest runs as admin) (1/0)
+; Run MMORPG Boxer as administrator (needed when EverQuest runs as admin) (1/0)
 RunAsAdmin=1
 
 [Characters]
@@ -4038,9 +4053,9 @@ ShowFeedback=1
 
 [Update]
 ; GitHub repository updates come from (owner/name). Leave empty for the
-; built-in one (Rav8es/BoxerPro)
+; built-in one (Rav8es/MMORPGBoxer)
 Repo=
-; Check for a newer version when EQ Boxer Pro starts (1/0)
+; Check for a newer version when MMORPG Boxer starts (1/0)
 CheckOnStart=1
 
 [Highlight]
