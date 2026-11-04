@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.0
+- Fix: in dark mode the selected row in lists (for example the slot list in the control panel) was light with light text. Lists now draw the selected row in blue with white text.
+- New **Layouts** window (control panel **Layouts...**, toolbar **Layout**, tray menu): every layout with a picture of where each of your slots goes, an explanation of what it's for, each slot's size, and Use / Save Current Positions / Delete. It replaces the layout dropdown in the control panel. Ctrl+Alt+S still steps to the next layout.
+- **Setup Wizard** now covers the newer features: in-game names (step 3), a layout list with picture and explanation (step 4), a new Team & performance step (separate settings per character, CPU cores, frame-rate caps, team hotkeys), and tooltips, update checks and appearance on the Features step. It has seven steps now.
+
 ## 1.5.0
 - **Dark mode:** a new **Appearance** setting in the control panel: **System** (follows Windows' light or dark app mode, and changes when Windows does), **Light** or **Dark**. It covers the control panel, the Clickable Views, Team & Performance, Characters, Setup Wizard and update windows, their title bars, and the app's menus.
 - The control panel's status bar is now a status line, so it's readable in both modes.

@@ -66,14 +66,15 @@ MMORPG Boxer was called **EQ Boxer Pro** up to version 1.2.2. Updating, or runni
 ## 3. First-time setup
 
 ### 3.0 Setup Wizard (easiest)
-The **Setup Wizard** opens by itself the first time you start MMORPG Boxer. Open it again any time with **Ctrl+Alt+W**, the **Setup Wizard...** button in the control panel, or the tray menu. It walks you through six steps:
+The **Setup Wizard** opens by itself the first time you start MMORPG Boxer. Open it again any time with **Ctrl+Alt+W**, the **Setup Wizard...** button in the control panel, or the tray menu. It walks you through seven steps:
 
 1. **Welcome:** your EverQuest folder (with a **Browse...** button and a check that `eqgame.exe` is there), and whether MMORPG Boxer runs as administrator.
 2. **Number of slots:** how many clients you play at once (1–8).
-3. **Characters & accounts:** a character name and an account name for each slot. No passwords are stored.
-4. **Layout:** pick a layout and see a **live preview** of where each slot will go, labelled with its character names. Choose whether windows stay above the taskbar and whether borders are removed.
-5. **Features:** sound only from the active client, the coloured frame, the button bar, opening the control panel on start, filling in the account name at login, and which keys are broadcast.
-6. **Finish:** a summary of everything. Click **Finish** to save, and MMORPG Boxer restarts with your settings.
+3. **Characters & accounts:** for each slot, a label (for example *Tank*), the character's **in-game name** (used by follow and assist), the account name and a resolution. No passwords are stored.
+4. **Layout:** pick a layout from the list and see a **live preview** of where each slot will go, labelled with its names, with an explanation of the layout. Choose whether windows stay above the taskbar and whether borders are removed.
+5. **Team & performance:** separate EverQuest settings for each character, how CPU cores are shared, and frame-rate caps for slot 1 and the other slots (active and background). It also lists the team command hotkeys.
+6. **Features:** sound only from the active client, the coloured frame, the button bar, opening the control panel on start, filling in the account name at login, which keys are broadcast, tooltips, checking for updates, and the appearance (System, Light or Dark).
+7. **Finish:** a summary of everything. Click **Finish** to save, and MMORPG Boxer restarts with your settings.
 
 **Cancel** closes the wizard without saving and stops it opening by itself. You'll still need to do the scaling step in 3.1 yourself, since the wizard can't change Windows settings for EverQuest.
 
@@ -159,7 +160,7 @@ Broadcast, key maps and mouse broadcast only work while an EverQuest window is a
 The panel opens automatically when MMORPG Boxer starts (turn this off with `ShowPanelOnStart=0` in `[General]`). Open or close it any time with **Ctrl+Alt+H**, the **Panel** button on the toolbar, or by double-clicking the tray icon. Closing it with the X only hides it; MMORPG Boxer keeps running in the tray.
 
 - **Slot list:** every slot with its character name, account name, resolution and whether it's running. Click a slot to edit its names in the boxes below the list. Double-click a slot to switch to that client.
-- **Layout dropdown:** choose Grid, Swap, a preset, or your own saved layout.
+- **Layout:** shows the layout in use. **Layouts...** opens the Layouts window (section 8.0).
 - **Buttons:** Launch All, Arrange, Save Layout..., Mirror On/Off, Broadcast On/Off, Views On/Off, Clickable Views..., Characters..., Show/Hide Toolbar, Setup Wizard..., Edit Config, Reload Config, Diagnostics..., Check for Updates.
 - **Show tooltips with shortcuts:** turns the button tooltips on or off.
 - **Appearance:** **System** (follows Windows' light or dark app mode, and switches when Windows does), **Light** or **Dark**. It applies to the control panel, every other window of the app, and its menus. The toolbar keeps its own colours (its **Bar** menu). `Appearance` in `[General]`.
@@ -238,6 +239,14 @@ Window titles, the toolbar and Launch All update immediately.
 
 ## 8. Window layouts
 
+### 8.0 The Layouts window
+Open it with **Layouts...** in the control panel, the **Layout** button on the toolbar, or the tray menu. Every layout is listed on the left. Click one to see:
+- a **picture** of where each of your slots goes, labelled with its names,
+- an **explanation** of the layout and what it's good for,
+- each slot's **size** in pixels, and any slot the layout has no place for.
+
+**Use This Layout** (or double-click) switches to it; running clients move straight away. **Save Current Positions...** saves where your windows are now as a new layout, and **Delete Layout** removes one you saved (the built-in ones can't be deleted). **Ctrl+Alt+S** still steps to the next layout without opening the window.
+
 ### Grid (recommended)
 With `Columns=2`, `Width=1920` and `Height=1080`, a 2×2 grid fills a 4K screen exactly:
 ```
@@ -267,7 +276,7 @@ With `UseWorkArea=1` (the default), every layout fits in the area **above the ta
 To use the full screen height instead, set `UseWorkArea=0` and turn on **Automatically hide the taskbar** (Windows Settings → Personalization → Taskbar → Taskbar behaviors).
 
 ### Layout presets
-Pick a layout from the **Layout** dropdown in the control panel, or press **Ctrl+Alt+S** to step through them. Built-in presets scale to any monitor. Sizes below are for 4K:
+Pick a layout in the **Layouts** window (8.0), or press **Ctrl+Alt+S** to step through them. Built-in presets scale to any monitor. Sizes below are for 4K:
 
 | Preset | Slots |
 |---|---|
@@ -295,7 +304,7 @@ Slots that a layout has no place for are left where they are.
 **Important: restart the clients after changing layout.** EverQuest picks its drawing size and mouse position when it starts. Before each client launches, the app writes that slot's size and position for the chosen layout into eqclient.ini. Clients that were already running get moved and stretched, and their mouse may be off until they're restarted.
 
 ### Your own layouts
-- **Easiest:** turn borders on (Ctrl+Alt+U), drag and size each client where you want it, then click **Save Layout...** and give it a name. It's added to the dropdown and saved in MMORPGBoxer.ini.
+- **Easiest:** turn borders on (Ctrl+Alt+U), drag and size each client where you want it, then click **Save Current Positions...** in the Layouts window (or **Save Layout...** in the control panel) and give it a name. It's added to the list and saved in MMORPGBoxer.ini.
 - **By hand:** add a section to MMORPGBoxer.ini (pixels from the monitor's top-left, as `x,y,width,height`):
   ```
   [Layout.My Layout]

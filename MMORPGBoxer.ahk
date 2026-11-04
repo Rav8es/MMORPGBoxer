@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "MMORPG Boxer"
-global APP_VERSION := "1.5.0"
+global APP_VERSION := "1.6.0"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/MMORPGBoxer"
 global OLD_UPDATE_REPO := "Rav8es/BoxerPro"     ; its name before the rename
@@ -183,6 +183,9 @@ global Appearance := Cfg("General", "Appearance", "System")   ; System | Light |
 global Hints := Map()         ; control hwnd -> grey hint text
 global NoTheme := Map()       ; control hwnd -> keeps its own colours
 global ThemedGuis := []       ; windows that follow the appearance setting
+global LVDrawn := Map()       ; ListViews that draw their own selection colours
+global LW := 0                ; Layouts window
+global BuiltinLayouts := ["Grid", "Swap"]
 
 ; ------------------------------ Hotkeys -------------------------------
 ; App hotkeys first (they take priority over broadcast hotkeys on the same key).
@@ -203,6 +206,7 @@ BindHotkey("ToggleVFX",       "^!v", ToggleVFX)
 BindHotkey("CreateView",      "^!c", CreateView)
 BindHotkey("DeleteView",      "^!d", DeleteView)
 BindHotkey("ViewManager",     "^!e", ShowViews)
+BindHotkey("LayoutsWindow",   "",    ShowLayouts)
 BindHotkey("FollowMe",        "^!f", TeamDo.Bind("follow"))
 BindHotkey("StopFollow",      "^!x", TeamDo.Bind("stop"))
 BindHotkey("AssistMe",        "^!t", TeamDo.Bind("assist"))
@@ -255,6 +259,7 @@ A_TrayMenu.Add("Control Panel", TogglePanel)
 A_TrayMenu.Add("Show/Hide Toolbar", ToggleToolbar)
 A_TrayMenu.Add("Launch All", LaunchAll)
 A_TrayMenu.Add("Characters && Accounts...", ShowAccounts)
+A_TrayMenu.Add("Layouts...", ShowLayouts)
 A_TrayMenu.Add("Clickable Views...", ShowViews)
 A_TrayMenu.Add("Team && Performance...", ShowPerf)
 A_TrayMenu.Add("Setup Wizard...", ShowWizard)
@@ -971,16 +976,24 @@ PerfAutoCores() {
         MsgBox("This PC has " total " logical cores - too few to split. Leave every client on all cores.", APP, "Iconi Owner" PF.gui.Hwnd)
         return
     }
+    Status(AutoCoresWrite(MAX_SLOTS))
+    ApplyCpuAll()
+    PerfRefresh()
+}
+
+; Write the auto-assigned cores for slots 1..cnt; returns a description.
+AutoCoresWrite(cnt) {
+    total := CpuCount()
+    if (total < 4)
+        return "Too few cores to split - every client uses all " total
     main := ToInt(Cfg("CPU", "MainSlot", "1"), 1)
     k := Max(2, (total // 4) & ~1)
-    Loop MAX_SLOTS {
+    Loop cnt {
         n := A_Index
         IniWrite(n = main ? "0-" (k - 1) : k "-" (total - 1), CFG_FILE, "CPU", "Slot" n)
         IniWrite(n = main ? "Above normal" : "Normal", CFG_FILE, "CPU", "Priority" n)
     }
-    ApplyCpuAll()
-    PerfRefresh()
-    Status("Slot " main " has cores 0-" (k - 1) " to itself, the others share " k "-" (total - 1))
+    return "Slot " main " has cores 0-" (k - 1) " to itself, the others share " k "-" (total - 1)
 }
 
 PerfResetCores() {
@@ -1393,16 +1406,20 @@ MigrateCredentials() {
 ; Where slot n lives in the current layout (screen coordinates).
 ; forStart = the size/position EverQuest should OPEN at (small enough that
 ; its bordered window fits on screen). Otherwise the slot's final size.
-CellFor(n, forStart := false) {
+CellFor(n, forStart := false) => CellIn(Layout, n, forStart)
+
+; Where slot n goes in layout `name` (screen coordinates), or 0 if that
+; layout has no place for it.
+CellIn(name, n, forStart := false) {
     LayoutArea(&mL, &mT, &mW, &mH)
-    if Presets.Has(Layout) {
-        P := Presets[Layout]
+    if Presets.Has(name) {
+        P := Presets[name]
         if !P.Has(n)
             return 0                    ; this layout has no place for slot n
         r := P[n]
         return SlotSize(ApplyRes(n, {x: mL + r.x, y: mT + r.y, w: r.w, h: r.h}), forStart)
     }
-    if (Layout = "Swap") {
+    if (name = "Swap") {
         if (n = 1 || SmallRegions.Length = 0)
             r := MainRegion
         else
@@ -2120,6 +2137,167 @@ LayoutNames() {
 }
 
 ; Ctrl+Alt+S: next layout in the list
+; What each built-in layout is for (shown in the Layouts window and wizard).
+LayoutDesc(name) {
+    static d := 0
+    if !d {
+        d := Map()
+        d["Grid"] := "Equal windows in rows ([Grid] Columns per row), each up to the grid size. Every client is the same size: good for 2 to 4 clients you play equally."
+        d["Swap"] := "One big main area and a column of small windows. The client you switch to (Ctrl+F1...F8, or clicking it) swaps into the big area, so you always play in the big window and glance at the rest."
+        d["Top + 2 Bottom"] := "Slot 1 fills the whole top half. Slots 2 and 3 share the bottom half side by side. For 3 clients: a main you watch closely and two you glance at."
+        d["Top Center + 2 Bottom"] := "Slot 1 sits in the middle of the top half at the same size as the others, leaving the top corners free for chat, a map or the toolbar. Slots 2 and 3 share the bottom half."
+        d["Top + 3 Bottom"] := "Slot 1 fills the whole top half. Slots 2, 3 and 4 share the bottom half in thirds. For 4 clients with one main."
+        d["Left + 2 Right"] := "Slot 1 takes the left half at full height. Slots 2 and 3 are stacked on the right half. A tall main window, good for 3 clients."
+        d["Big + 3 Right"] := "Slot 1 gets three quarters of the width and height. Slots 2, 3 and 4 are small windows down the right edge. The strip along the bottom stays free (toolbar, chat)."
+        d["Side by Side"] := "Two clients, each half the width and the full height."
+        d["Top / Bottom"] := "Two clients, each the full width and half the height."
+        d["Big + 4 Bottom"] := "Slot 1 fills the top three quarters. Slots 2 to 5 are small windows along the bottom. For 5 clients with one main."
+    }
+    if d.Has(name)
+        return d[name]
+    return "Your own layout, saved from where your windows were. Each slot goes back to that exact place and size."
+}
+
+; how many slots a layout has room for (8 = any number)
+LayoutPlaces(name) {
+    if Presets.Has(name)
+        return Presets[name].Count
+    if (name = "Swap")
+        return 1 + SmallRegions.Length
+    return 8
+}
+
+; Draw cells (relative to the layout area) into a preview box.
+DrawPreview(box, rects, cells, labels) {
+    LayoutArea(&L, &T, &W, &H)
+    box.GetPos(&bx, &by, &bw, &bh)
+    f := Min((bw - 2) / W, (bh - 2) / H)
+    for n, r in rects {
+        c := (n <= cells.Length) ? cells[n] : 0
+        if !c {
+            r.Visible := false
+            continue
+        }
+        r.Move(bx + 1 + Round(c.x * f), by + 1 + Round(c.y * f), Max(8, Round(c.w * f) - 1), Max(8, Round(c.h * f) - 1))
+        r.Text := (n <= labels.Length) ? labels[n] : n
+        r.Visible := true
+    }
+}
+
+SlotColours() => ["2E5A88", "2E7D32", "8E3B3B", "6A4C93", "B8860B", "00695C", "5D4037", "455A64"]
+
+ShowLayouts(*) {
+    global LW
+    g := 0
+    LBtn(opts, label, fn, tip) {
+        btn := g.AddButton(opts, label)
+        btn.OnEvent("Click", fn)
+        AddTip(btn, tip)
+        return btn
+    }
+    if !LW {
+        g := Gui(, APP " - Layouts")
+        g.SetFont("s10", "Segoe UI")
+        LW := {gui: g, rects: []}
+        Hint(g.AddText("xm w790", "Pick a layout to see where each of your slots goes. Use This Layout switches to it straight away (Ctrl+Alt+S steps to the next one)."))
+        LW.list := g.AddListBox("xm y+10 w240 r15 Section", LayoutNames())
+        LW.list.OnEvent("Change", (*) => LayoutsShow())
+        LW.list.OnEvent("DoubleClick", (*) => LayoutsUse())
+        LW.box := Keep(g.AddText("x+14 ys w536 h300 Border Background101010"))
+        g.SetFont("s11 w600")
+        LW.name := g.AddText("xp y+10 w536", "")
+        g.SetFont("s10 w400")
+        LW.desc := g.AddText("xp y+4 w536 h66", "")
+        LW.sizes := Hint(g.AddText("xp y+4 w536 h96", ""))
+        for col in SlotColours()
+            LW.rects.Push(Keep(g.AddText("xs ys w10 h10 Center 0x200 Border cFFFFFF Background" col, A_Index)))
+        LW.use := LBtn("xs ys+516 w180 h32 Default", "Use This Layout", (*) => LayoutsUse(), TipText("Switch to the selected layout; running clients move straight away", "ToggleLayout", "^!s"))
+        LBtn("x+8 yp w220 h32", "Save Current Positions...", (*) => LayoutsSave(), TipText("Save where your windows are right now as a new layout"))
+        LW.del := LBtn("x+8 yp w150 h32", "Delete Layout", (*) => LayoutsDelete(), TipText("Delete the selected layout (only layouts you saved yourself)"))
+        LBtn("x+8 yp w150 h32", "Close", (*) => g.Hide(), TipText("Close this window"))
+        g.OnEvent("Close", (*) => g.Hide())
+        g.OnEvent("Escape", (*) => g.Hide())
+        ThemeGui(g)
+    }
+    LW.gui.Show()
+    LayoutsRefresh(Layout)
+}
+
+; position of a layout in LayoutNames() (1 if it isn't there)
+LayoutIndex(name) {
+    for i, x in LayoutNames()
+        if (x = name)
+            return i
+    return 1
+}
+
+LayoutsVisible() => (LW && DllCall("IsWindowVisible", "Ptr", LW.gui.Hwnd))
+
+LayoutsRefresh(select := "") {
+    if !LayoutsVisible()
+        return
+    if (select = "")
+        select := LW.list.Text != "" ? LW.list.Text : Layout
+    LW.list.Delete()
+    LW.list.Add(LayoutNames())
+    LW.list.Choose(LayoutIndex(select))
+    LayoutsShow()
+}
+
+LayoutsShow() {
+    name := LW.list.Text
+    if (name = "")
+        return
+    LayoutArea(&L, &T, &W, &H)
+    cells := [], labels := [], sizes := "", missing := ""
+    Loop MAX_SLOTS {
+        n := A_Index
+        c := CellIn(name, n)
+        cells.Push(c ? {x: c.x - L, y: c.y - T, w: c.w, h: c.h} : 0)
+        labels.Push(n (Chars[n] != "" ? " " Chars[n] : ""))
+        if c
+            sizes .= "Slot " n (Chars[n] != "" ? " (" Chars[n] ")" : "") ":  " c.w " x " c.h "`n"
+        else
+            missing .= (missing = "" ? "" : ", ") n
+    }
+    DrawPreview(LW.box, LW.rects, cells, labels)
+    LW.name.Value := name (name = Layout ? "   (in use)" : "") "   -   room for " (LayoutPlaces(name) >= 8 ? "any number of" : LayoutPlaces(name)) " slot(s)"
+    LW.desc.Value := LayoutDesc(name)
+    LW.sizes.Value := sizes (missing != "" ? "No place for slot(s) " missing " - pick a layout with more spaces or use fewer slots." : "")
+    LW.del.Enabled := !HasVal(BuiltinLayouts, name)
+}
+
+LayoutsUse() {
+    name := LW.list.Text
+    if (name != "")
+        SetLayout(name)
+    LayoutsRefresh(name)
+}
+
+LayoutsSave() {
+    SaveLayout()
+    LayoutsRefresh(Layout)
+}
+
+LayoutsDelete() {
+    name := LW.list.Text
+    if (name = "" || HasVal(BuiltinLayouts, name))
+        return
+    if (MsgBox("Delete the layout '" name "'?", APP, "YesNo Icon? Owner" LW.gui.Hwnd) != "Yes")
+        return
+    try IniDelete(CFG_FILE, "Layout." name)
+    try Presets.Delete(name)
+    for i, x in PresetOrder
+        if (x = name) {
+            PresetOrder.RemoveAt(i)
+            break
+        }
+    if (Layout = name)
+        SetLayout("Grid")
+    LayoutsRefresh(Layout)
+    Status("Deleted layout '" name "'")
+}
+
 ToggleLayout(*) {
     names := LayoutNames()
     i := 1
@@ -2141,6 +2319,7 @@ SetLayout(name) {
     PrepFreeSlotIni()
     if LayoutDDL
         try LayoutDDL.Text := name
+    LayoutsRefresh()
     msg := "Layout: " name
     if CountClients()
         msg .= "`nRestart running clients so they draw at the new sizes and the mouse lines up."
@@ -2167,6 +2346,7 @@ LoadPresets() {
         ["Big + 4 Bottom",  [[0, 0, 1, 0.75], [0, 0.75, 0.25, 0.25], [0.25, 0.75, 0.25, 0.25], [0.5, 0.75, 0.25, 0.25], [0.75, 0.75, 0.25, 0.25]]]
     ]
     for b in builtins {
+        BuiltinLayouts.Push(b[1])
         P := Map()
         for n, f in b[2]
             P[n] := {x: Round(f[1] * W), y: Round(f[2] * H), w: Round(f[3] * W), h: Round(f[4] * H)}
@@ -2220,13 +2400,10 @@ SaveLayout(*) {
     if !Presets.Has(name)
         PresetOrder.Push(name)
     Presets[name] := P
-    if LayoutDDL {
-        LayoutDDL.Delete()
-        LayoutDDL.Add(LayoutNames())
-    }
     SetLayout(name)
     if LayoutDDL
         try LayoutDDL.Text := name
+    LayoutsRefresh(name)
     Status("Saved layout '" name "'")
 }
 
@@ -3458,6 +3635,39 @@ ApplyMenuTheme() {
     }
 }
 
+; Lets a window or control use Windows' dark theme parts (scroll bars,
+; selection) - needed on some Windows versions for the DarkMode_ themes.
+AllowDark(hwnd, on) {
+    static fn := 0
+    if !fn {
+        h := DllCall("GetModuleHandle", "Str", "uxtheme", "Ptr")
+        fn := h ? DllCall("GetProcAddress", "Ptr", h, "Ptr", 133, "Ptr") : -1   ; AllowDarkModeForWindow
+    }
+    if (fn > 0)
+        try DllCall(fn, "Ptr", hwnd, "Int", on ? 1 : 0)
+}
+
+; In dark mode, list rows are painted by us: the selected row in blue with
+; white text, others dark (the theme's own highlight was light, leaving the
+; light text unreadable).
+LVDarkDraw(ctrl, lParam) {
+    if !IsDark()
+        return
+    x64 := (A_PtrSize = 8)
+    stage := NumGet(lParam, x64 ? 24 : 12, "UInt")
+    if (stage = 1)                                   ; CDDS_PREPAINT
+        return 0x20                                  ; CDRF_NOTIFYITEMDRAW
+    if (stage != 0x10001)                            ; CDDS_ITEMPREPAINT
+        return 0
+    item := NumGet(lParam, x64 ? 56 : 36, "UPtr")
+    stOff := x64 ? 64 : 40
+    NumPut("UInt", NumGet(lParam, stOff, "UInt") & ~0x51, lParam, stOff)   ; theme: don't draw selected/focus/hot
+    sel := SendMessage(0x102C, item, 0x2, ctrl) & 0x2                     ; LVM_GETITEMSTATE, LVIS_SELECTED
+    NumPut("UInt", RGBtoBGR(sel ? "FFFFFF" : "E6E6E6"), lParam, x64 ? 80 : 48)   ; text
+    NumPut("UInt", RGBtoBGR(sel ? "2F5A8C" : "2C2C2C"), lParam, x64 ? 84 : 52)   ; background
+    return 0x2                                       ; CDRF_NEWFONT
+}
+
 RGBtoBGR(hex) {
     v := Integer("0x" hex)
     return ((v & 0xFF) << 16) | (v & 0xFF00) | ((v >> 16) & 0xFF)
@@ -3466,6 +3676,7 @@ RGBtoBGR(hex) {
 ThemeCtrl(c, p) {
     if NoTheme.Has(c.Hwnd)
         return
+    AllowDark(c.Hwnd, p.dark)
     fg := Hints.Has(c.Hwnd) ? p.hint : p.fg
     switch c.Type, false {
         case "Text", "Link":
@@ -3495,6 +3706,10 @@ ThemeCtrl(c, p) {
             SendMessage(0x1001, 0, bk, c)                                 ; LVM_SETBKCOLOR
             SendMessage(0x1026, 0, bk, c)                                 ; LVM_SETTEXTBKCOLOR
             SendMessage(0x1024, 0, tx, c)                                 ; LVM_SETTEXTCOLOR
+            if !LVDrawn.Has(c.Hwnd) {
+                LVDrawn[c.Hwnd] := true
+                c.OnNotify(-12, LVDarkDraw)                               ; NM_CUSTOMDRAW
+            }
     }
 }
 
@@ -3503,6 +3718,7 @@ ThemeGui(g) {
     if !HasVal(ThemedGuis, g)
         ThemedGuis.Push(g)
     p := Palette()
+    AllowDark(g.Hwnd, p.dark)
     try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", g.Hwnd, "UInt", 20, "Int*", p.dark ? 1 : 0, "UInt", 4)  ; dark title bar
     g.BackColor := p.bg
     for hwnd, c in g
@@ -3735,7 +3951,7 @@ ShowWizard(*) {
     g := Gui("+AlwaysOnTop", APP " - Setup Wizard")
     g.SetFont("s10", "Segoe UI")
     g.OnEvent("Close", WizCancel)
-    Wiz := {g: g, page: 1, pages: [[], [], [], [], [], []], rows: [], rects: []}
+    Wiz := {g: g, page: 1, pages: [[], [], [], [], [], [], []], rows: [], rects: []}
     g.SetFont("s15 w600")
     Wiz.title := g.AddText("xm w620 h34", "")
     g.SetFont("s10 w400")
@@ -3761,59 +3977,95 @@ ShowWizard(*) {
     Wiz.count := P(2, g.AddDropDownList("x+6 yp w70 Choose" MAX_SLOTS, ["1", "2", "3", "4", "5", "6", "7", "8"]))
 
     ; ---- page 3: characters & accounts ----
-    P(3, g.AddText("xs ys w620", "Give each slot a character name (shown in window titles and on the toolbar), an account name (filled in for you at the EverQuest login screen) and a resolution. 'Fill slot' uses the slot's whole space in the layout. No passwords are stored."))
-    P(3, g.AddText("xs y+12 w44", "Slot"))
-    P(3, g.AddText("x+6 yp w200", "Character name"))
-    P(3, g.AddText("x+8 yp w200", "Account name"))
-    P(3, g.AddText("x+8 yp w150", "Resolution"))
+    P(3, g.AddText("xs ys w620", "For each slot: a label (shown in window titles and on the toolbar, for example Tank), the character's name in EverQuest (used by follow and assist), the account name (filled in at the login screen; no passwords are stored) and a resolution ('Fill slot' uses the slot's whole space)."))
+    P(3, g.AddText("xs y+12 w40", "Slot"))
+    P(3, g.AddText("x+4 yp w140", "Label"))
+    P(3, g.AddText("x+6 yp w140", "In-game name"))
+    P(3, g.AddText("x+6 yp w140", "Account name"))
+    P(3, g.AddText("x+6 yp w140", "Resolution"))
     Loop 8 {
         n := A_Index
-        lbl := g.AddText("xs y+6 w44 h26 0x200", n)
-        nm := g.AddEdit("x+6 yp w200", Cfg("Characters", String(n), ""))
-        ac := g.AddEdit("x+8 yp w200", SlotUser(n))
-        rs := g.AddDropDownList("x+8 yp w150", ResolutionChoices())
+        lbl := g.AddText("xs y+6 w40 h26 0x200", n)
+        nm := g.AddEdit("x+4 yp w140", Cfg("Characters", String(n), ""))
+        ig := g.AddEdit("x+6 yp w140", InGameName(n))
+        ac := g.AddEdit("x+6 yp w140", SlotUser(n))
+        rs := g.AddDropDownList("x+6 yp w140", ResolutionChoices())
         SetResChoice(rs, SlotResText(n))
         rs.OnEvent("Change", WizResChange)
-        Wiz.rows.Push({lbl: lbl, name: nm, acct: ac, res: rs})
-        for c in [lbl, nm, ac, rs]
+        Wiz.rows.Push({lbl: lbl, name: nm, ign: ig, acct: ac, res: rs})
+        for c in [lbl, nm, ig, ac, rs]
             P(3, c)
     }
 
     ; ---- page 4: layout ----
-    P(4, g.AddText("xs ys w620", "How should the windows be arranged on your screen?"))
-    Wiz.layout := P(4, g.AddDropDownList("xs y+8 w300", LayoutNames()))
-    try Wiz.layout.Text := Layout
+    P(4, g.AddText("xs ys w620", "How should the windows be arranged on your screen? Pick a layout to see where each slot goes."))
+    Wiz.layout := P(4, g.AddListBox("xs y+8 w220 r13", LayoutNames()))
+    Wiz.layout.Choose(LayoutIndex(Layout))
     Wiz.layout.OnEvent("Change", (*) => WizPreview())
-    Wiz.box := P(4, Keep(g.AddText("xs y+10 w384 h216 Border Background101010")))
-    colours := ["2E5A88", "2E7D32", "8E3B3B", "6A4C93", "B8860B", "00695C", "5D4037", "455A64"]
-    Loop 8
-        Wiz.rects.Push(P(4, Keep(g.AddText("xs ys w10 h10 Center 0x200 Border cFFFFFF Background" colours[A_Index], A_Index))))
-    Wiz.note := P(4, Hint(g.AddText("x+0 yp w10 cGray", "")))
-    Wiz.work := P(4, g.AddCheckbox("xs w620", "Keep windows above the taskbar"))
+    Wiz.box := P(4, Keep(g.AddText("x+12 yp w388 h218 Border Background101010")))
+    Wiz.desc := P(4, g.AddText("xp yp+226 w388 h84", ""))
+    for col in SlotColours()
+        Wiz.rects.Push(P(4, Keep(g.AddText("xs ys w10 h10 Center 0x200 Border cFFFFFF Background" col, A_Index))))
+    Wiz.work := P(4, g.AddCheckbox("xs ys+356 w620", "Keep windows above the taskbar"))
     Wiz.work.Value := UseWorkArea
     Wiz.borders := P(4, g.AddCheckbox("xs y+4 w620", "Remove window borders (clients sit edge to edge)"))
     Wiz.borders.Value := HideBorders
     P(4, Hint(g.AddText("xs y+4 w620 cGray", "Tip: after changing layout, close and relaunch your clients so they start at the new size.")))
 
-    ; ---- page 5: features ----
-    P(5, g.AddText("xs ys w620", "Choose the features you want. You can change all of these later."))
-    Wiz.sound := P(5, g.AddCheckbox("xs y+10 w620", "Sound only from the client you're playing in (others are muted)"))
-    Wiz.sound.Value := Cfg("Audio", "FollowActive", "1") = "1"
-    Wiz.frame := P(5, g.AddCheckbox("xs y+6 w620", "Coloured frame around the client you're playing in"))
-    Wiz.frame.Value := Cfg("Highlight", "Enabled", "1") = "1"
-    Wiz.toolbar := P(5, g.AddCheckbox("xs y+6 w620", "Show the on-screen button bar"))
-    Wiz.toolbar.Value := Cfg("Toolbar", "Show", "1") = "1"
-    Wiz.panel := P(5, g.AddCheckbox("xs y+6 w620", "Open the control panel when MMORPG Boxer starts"))
-    Wiz.panel.Value := Cfg("General", "ShowPanelOnStart", "1") = "1"
-    Wiz.loginArg := P(5, g.AddCheckbox("xs y+6 w620", "Fill in the account name at the login screen (Launch All)"))
-    Wiz.loginArg.Value := Cfg("Login", "UseLoginArg", "1") = "1"
-    P(5, g.AddText("xs y+14 w620", "Keys copied to every client when broadcast is on (Ctrl+Alt+B), separated by commas:"))
-    Wiz.keys := P(5, g.AddEdit("xs y+4 w620", Cfg("Broadcast", "Keys", "1,2,3,4,5,6,7,8,9,0,-,=")))
-    P(5, Hint(g.AddText("xs y+4 w620 cGray", "Default: the 12 hotbar keys 1-0, - and =.")))
+    ; ---- page 5: team & performance ----
+    P(5, g.AddText("xs ys w620", "How the clients work together and run. You can change all of this later under Team && Performance in the control panel."))
+    Wiz.prof := P(5, g.AddCheckbox("xs y+12 w620", "Separate EverQuest settings file for each character (recommended). Each keeps its own graphics and window settings, and a client that logs out keeps its own resolution."))
+    Wiz.prof.Value := ProfilesOn
+    P(5, g.AddText("xs y+14 w620", "CPU cores:"))
+    Wiz.cpu := P(5, g.AddDropDownList("xs y+4 w620", ["Share every core between all clients (normal)"
+        , "Give slot 1 cores of its own and higher priority (smoother main when the PC is busy)"
+        , "Keep my current CPU settings"]))
+    custom := false
+    Loop 8
+        if (SlotCores(A_Index) != "all" || SlotPriority(A_Index) != "Normal")
+            custom := true
+    Wiz.cpu.Choose(custom ? 3 : 1)
+    P(5, g.AddText("xs y+16 w620", "Frame-rate caps (blank = keep EverQuest's own setting):"))
+    f1 := SlotFps(1), f2 := SlotFps(2)
+    P(5, g.AddText("xs y+6 w160 h26 0x200", "Slot 1 - active:"))
+    Wiz.fg1 := P(5, g.AddEdit("x+4 yp w60 Number", f1.fg))
+    P(5, g.AddText("x+16 yp w100 h26 0x200", "background:"))
+    Wiz.bg1 := P(5, g.AddEdit("x+4 yp w60 Number", f1.bg))
+    P(5, g.AddText("xs y+6 w160 h26 0x200", "Other slots - active:"))
+    Wiz.fg2 := P(5, g.AddEdit("x+4 yp w60 Number", f2.fg))
+    P(5, g.AddText("x+16 yp w100 h26 0x200", "background:"))
+    Wiz.bg2 := P(5, g.AddEdit("x+4 yp w60 Number", f2.bg))
+    P(5, Hint(g.AddText("xs y+6 w620 cGray", "Lower background caps save power; keep them at 25 or more so /follow keeps up. Caps apply when a client starts.")))
+    P(5, g.AddText("xs y+16 w620", "Team commands (they use the in-game names from step 3):"))
+    P(5, Hint(g.AddText("xs y+4 w620 cGray", "Ctrl+Alt+F  everyone follows you      Ctrl+Alt+X  stop following      Ctrl+Alt+T  everyone assists you`nMore (follow in a line, attack, back off, sit, stand) on the toolbar's Team button.")))
 
-    ; ---- page 6: summary ----
-    P(6, g.AddText("xs ys w620", "Ready to save. Check the summary below, then click Finish. MMORPG Boxer will restart with your settings."))
-    Wiz.summary := P(6, g.AddEdit("xs y+10 w620 r12 ReadOnly -Wrap"))
+    ; ---- page 6: features ----
+    P(6, g.AddText("xs ys w620", "Choose the features you want. You can change all of these later."))
+    Wiz.sound := P(6, g.AddCheckbox("xs y+10 w620", "Sound only from the client you're playing in (others are muted)"))
+    Wiz.sound.Value := Cfg("Audio", "FollowActive", "1") = "1"
+    Wiz.frame := P(6, g.AddCheckbox("xs y+6 w620", "Coloured frame around the client you're playing in"))
+    Wiz.frame.Value := Cfg("Highlight", "Enabled", "1") = "1"
+    Wiz.toolbar := P(6, g.AddCheckbox("xs y+6 w620", "Show the on-screen button bar"))
+    Wiz.toolbar.Value := Cfg("Toolbar", "Show", "1") = "1"
+    Wiz.panel := P(6, g.AddCheckbox("xs y+6 w620", "Open the control panel when MMORPG Boxer starts"))
+    Wiz.panel.Value := Cfg("General", "ShowPanelOnStart", "1") = "1"
+    Wiz.loginArg := P(6, g.AddCheckbox("xs y+6 w620", "Fill in the account name at the login screen (Launch All)"))
+    Wiz.loginArg.Value := Cfg("Login", "UseLoginArg", "1") = "1"
+    P(6, g.AddText("xs y+14 w620", "Keys copied to every client when broadcast is on (Ctrl+Alt+B), separated by commas:"))
+    Wiz.keys := P(6, g.AddEdit("xs y+4 w620", Cfg("Broadcast", "Keys", "1,2,3,4,5,6,7,8,9,0,-,=")))
+    P(6, Hint(g.AddText("xs y+4 w620 cGray", "Default: the 12 hotbar keys 1-0, - and =.")))
+    Wiz.tips := P(6, g.AddCheckbox("xs y+12 w620", "Show tooltips with keyboard shortcuts on buttons"))
+    Wiz.tips.Value := TipsOn
+    Wiz.updates := P(6, g.AddCheckbox("xs y+6 w620", "Check for updates when MMORPG Boxer starts"))
+    Wiz.updates.Value := Cfg("Update", "CheckOnStart", "1") = "1"
+    P(6, g.AddText("xs y+10 w110 h28 0x200", "Appearance:"))
+    Wiz.look := P(6, g.AddDropDownList("x+4 yp w200", ["System", "Light", "Dark"]))
+    Wiz.look.Choose(Appearance = "Dark" ? 3 : Appearance = "Light" ? 2 : 1)
+    P(6, Hint(g.AddText("x+10 yp w300 h28 0x200 cGray", "System follows Windows' light/dark mode")))
+
+    ; ---- page 7: summary ----
+    P(7, g.AddText("xs ys w620", "Ready to save. Check the summary below, then click Finish. MMORPG Boxer will restart with your settings.`n`nAfterwards: Launch All starts your clients, Layouts... shows every layout, and Clickable Views (Ctrl+Alt+E) lets you use one client's hotbar from another."))
+    Wiz.summary := P(7, g.AddEdit("xs y+10 w620 r16 ReadOnly -Wrap"))
 
     ; ---- buttons (below the tallest page) ----
     anchor.GetPos(, &ay)
@@ -3830,24 +4082,24 @@ ShowWizard(*) {
 
 WizShowPage(i) {
     Wiz.page := i
-    titles := ["Welcome", "Number of slots", "Characters && accounts", "Layout", "Features", "Finish"]
+    titles := ["Welcome", "Number of slots", "Characters && accounts", "Layout", "Team && performance", "Features", "Finish"]
     Wiz.title.Value := titles[i]
-    Wiz.step.Value := "Step " i " of 6"
+    Wiz.step.Value := "Step " i " of " titles.Length
     for k, list in Wiz.pages
         for c in list
             c.Visible := (k = i)
     if (i = 3) {
         cnt := Integer(Wiz.count.Text)
         for n, r in Wiz.rows
-            for c in [r.lbl, r.name, r.acct, r.res]
+            for c in [r.lbl, r.name, r.ign, r.acct, r.res]
                 c.Visible := (n <= cnt)
     }
     if (i = 4)
         WizPreview()
-    if (i = 6)
+    if (i = 7)
         Wiz.summary.Value := WizSummary()
     Wiz.back.Enabled := (i > 1)
-    Wiz.next.Text := (i = 6) ? "Finish" : "Next >"
+    Wiz.next.Text := (i = 7) ? "Finish" : "Next >"
 }
 
 WizGo(d) {
@@ -3856,9 +4108,9 @@ WizGo(d) {
         if (MsgBox("eqgame.exe wasn't found in that folder. Continue anyway?", APP, "YesNo Icon! Owner" Wiz.g.Hwnd) != "Yes")
             return
     }
-    if (d > 0 && i = 6)
+    if (d > 0 && i = 7)
         return WizFinish()
-    WizShowPage(Max(1, Min(6, i + d)))
+    WizShowPage(Max(1, Min(7, i + d)))
 }
 
 WizResChange(ctrl, *) {
@@ -3907,24 +4159,15 @@ WizPreview() {
             cells.Push(WizRes(A_Index, {x: Mod(k, GridCols) * cw, y: (k // GridCols) * ch, w: cw, h: ch}, W, H))
         }
     }
-    Wiz.box.GetPos(&bx, &by, &bw, &bh)
-    f := Min((bw - 2) / W, (bh - 2) / H)
-    missing := ""
-    for n, r in Wiz.rects {
-        c := (n <= cells.Length) ? cells[n] : 0
-        if !c {
-            r.Visible := false
-            if (n <= cnt)
-                missing .= (missing = "" ? "" : ", ") n
-            continue
-        }
-        r.Move(bx + 1 + Round(c.x * f), by + 1 + Round(c.y * f), Max(8, Round(c.w * f) - 1), Max(8, Round(c.h * f) - 1))
-        nm := Wiz.rows[n].name.Value
-        r.Text := n (nm != "" ? " " nm : "")
-        r.Visible := true
+    labels := [], missing := ""
+    for n, r in Wiz.rows {
+        labels.Push(n (r.name.Value != "" ? " " r.name.Value : ""))
+        if (n <= cnt && !(n <= cells.Length && cells[n]))
+            missing .= (missing = "" ? "" : ", ") n
     }
-    Wiz.note.Move(bx + bw + 10, by, 220, 120)
-    Wiz.note.Value := (missing = "") ? "" : "This layout has no place for slot(s) " missing ". Pick a layout with more spaces, or use fewer slots."
+    DrawPreview(Wiz.box, Wiz.rects, cells, labels)
+    Wiz.desc.Value := LayoutDesc(name)
+        . (missing = "" ? "" : "`nNo place for slot(s) " missing " - pick a layout with more spaces, or use fewer slots.")
 }
 
 ; preview cell for slot n using the resolution picked on the wizard's page 3
@@ -3944,17 +4187,23 @@ WizSummary() {
     Loop cnt {
         r := Wiz.rows[A_Index]
         t .= "   Slot " A_Index ":  " (r.name.Value != "" ? r.name.Value : "(no name - Launch All skips it)")
+            . (r.ign.Value != "" ? "   in game " r.ign.Value : "")
             . (r.acct.Value != "" ? "   account " r.acct.Value : "") "   " r.res.Text "`r`n"
     }
     t .= "Layout:  " Wiz.layout.Text (Wiz.work.Value ? ", above the taskbar" : ", full screen")
         . (Wiz.borders.Value ? ", no borders" : ", with borders") "`r`n"
     yn(v) => v ? "on" : "off"
+    t .= "Separate settings per character:  " yn(Wiz.prof.Value) "`r`n"
+    t .= "CPU:  " Wiz.cpu.Text "`r`n"
+    fps(a, b) => (Trim(a.Value) = "" && Trim(b.Value) = "") ? "EverQuest's own" : (Trim(a.Value) = "" ? "-" : a.Value) " / " (Trim(b.Value) = "" ? "-" : b.Value)
+    t .= "Max FPS slot 1:  " fps(Wiz.fg1, Wiz.bg1) "    other slots:  " fps(Wiz.fg2, Wiz.bg2) "`r`n"
     t .= "Sound from active client only:  " yn(Wiz.sound.Value) "`r`n"
     t .= "Frame around active client:  " yn(Wiz.frame.Value) "`r`n"
     t .= "Button bar:  " yn(Wiz.toolbar.Value) "`r`n"
     t .= "Control panel on start:  " yn(Wiz.panel.Value) "`r`n"
     t .= "Account name at login:  " yn(Wiz.loginArg.Value) "`r`n"
     t .= "Broadcast keys:  " Wiz.keys.Value "`r`n"
+    t .= "Tooltips:  " yn(Wiz.tips.Value) "    Appearance:  " Wiz.look.Text "    Update check:  " yn(Wiz.updates.Value) "`r`n"
     t .= "Run as administrator:  " yn(Wiz.admin.Value)
     return t
 }
@@ -3972,6 +4221,7 @@ WizFinish() {
     Loop cnt {
         r := Wiz.rows[A_Index]
         W("Characters", String(A_Index), Trim(StrReplace(r.name.Value, "|")))
+        W("InGameNames", String(A_Index), Trim(r.ign.Value))
         W("Usernames", String(A_Index), Trim(StrReplace(r.acct.Value, " ")))
         W("Resolutions", String(A_Index), (r.res.Text = "Fill slot" || r.res.Text = "Custom...") ? "" : r.res.Text)
     }
@@ -3981,6 +4231,21 @@ WizFinish() {
     W("Login", "UseLoginArg", Wiz.loginArg.Value ? 1 : 0)
     keys := RegExReplace(Trim(Wiz.keys.Value), "\s+", "")
     W("Broadcast", "Keys", keys != "" ? keys : "1,2,3,4,5,6,7,8,9,0,-,=")
+    W("Profiles", "PerCharacter", Wiz.prof.Value ? 1 : 0)
+    switch Wiz.cpu.Value {
+        case 1:
+            Loop cnt {
+                W("CPU", "Slot" A_Index, "all")
+                W("CPU", "Priority" A_Index, "Normal")
+            }
+        case 2: AutoCoresWrite(cnt)
+    }
+    caps(a, b) => (Trim(a.Value) = "" && Trim(b.Value) = "") ? "" : Trim(a.Value) "," Trim(b.Value)
+    Loop cnt
+        W("FPS", "Slot" A_Index, A_Index = 1 ? caps(Wiz.fg1, Wiz.bg1) : caps(Wiz.fg2, Wiz.bg2))
+    W("General", "ShowTooltips", Wiz.tips.Value ? 1 : 0)
+    W("General", "Appearance", Wiz.look.Text)
+    W("Update", "CheckOnStart", Wiz.updates.Value ? 1 : 0)
     W("General", "WizardDone", 1)
     Reload()
 }
@@ -4038,7 +4303,7 @@ BuildToolbar() {
     TBAdd("views",   "Edit Views", ShowViews)
     TBAdd("team",    "Team",       TeamMenu)
     TBAdd("arrange", "Arrange",    ManualArrange)
-    TBAdd("layout",  "Layout",     ToggleLayout)
+    TBAdd("layout",  "Layout",     ShowLayouts)
     TBAdd("launch",  "Launch All", LaunchAll)
     TBAdd("pause",   "Pause",      TogglePause, "Resume")
     TBAdd("panel",   "Panel",      TogglePanel)
@@ -4074,7 +4339,7 @@ BuildToolbar() {
               , ["views", "Open Clickable Views: make, move, change and delete views", "ViewManager", "^!e"]
               , ["team", "Team commands: follow me, stop following, assist me, attack, sit, stand.`nFollow me " NiceKey(Cfg("Hotkeys", "FollowMe", "^!f")) ", stop " NiceKey(Cfg("Hotkeys", "StopFollow", "^!x")) ", assist me " NiceKey(Cfg("Hotkeys", "AssistMe", "^!t")), "", ""]
               , ["arrange", "Put every client back in its slot and make it redraw at its size`n(fixes a stretched picture)", "Arrange", "^!g"]
-              , ["layout", "Switch to the next layout", "ToggleLayout", "^!s"]
+              , ["layout", "Open Layouts: see every layout with a picture and pick one.`nNext layout without the window: " NiceKey(Cfg("Hotkeys", "ToggleLayout", "^!s")), "", ""]
               , ["launch", "Start every slot that has a character", "LaunchAll", "^!l"]
               , ["pause", "Pause or resume all MMORPG Boxer hotkeys", "Pause", "^!p"]
               , ["panel", "Show or hide the control panel", "ControlPanel", "^!h"]
@@ -4403,6 +4668,7 @@ HotkeyHelp(*) {
               , ["ToggleMirror", "^!m", "Mirror mode on/off"], ["CreateView", "^!c", "New clickable view"]
               , ["DeleteView", "^!d", "Delete view under mouse"], ["ToggleVFX", "^!v", "Views on/off"]
               , ["ViewManager", "^!e", "Clickable Views window"]
+              , ["LayoutsWindow", "", "Layouts window"]
               , ["FollowMe", "^!f", "Team: everyone follow me"], ["StopFollow", "^!x", "Team: stop following"]
               , ["AssistMe", "^!t", "Team: assist me"], ["FollowLine", "", "Team: follow in a line"]
               , ["AttackMyTarget", "", "Team: attack my target"], ["BackOff", "", "Team: back off"]
@@ -4502,12 +4768,11 @@ BuildPanel() {
     AddTip(look, "System follows Windows' light or dark app mode (Settings > Personalization > Colors)")
     AddTip(tipBox, "Show what each button does and its keyboard shortcut when you point at it")
     ; layout and slot count on their own row
-    Panel.AddText("xs y+14 w60 h28 0x200", "Layout:")
-    LayoutDDL := Panel.AddDropDownList("x+4 yp w250", LayoutNames())
-    try LayoutDDL.Text := Layout
-    LayoutDDL.OnEvent("Change", LayoutChanged)
-    Panel.AddText("x+20 yp w120 h28 0x200", "Number of slots:")
-    ddl := Panel.AddDropDownList("x+4 yp w56 Choose" MAX_SLOTS, ["1", "2", "3", "4", "5", "6", "7", "8"])
+    Panel.AddText("xs y+14 w60 h32 0x200", "Layout:")
+    LayoutDDL := Panel.AddText("x+4 yp w200 h32 0x200", Layout)       ; current layout's name
+    PB("x+8 yp w130 h32", "Layouts...", ShowLayouts, TipText("See every layout with a picture and an explanation, and switch, save or delete layouts", "LayoutsWindow", ""))
+    Panel.AddText("x+12 yp w120 h32 0x200", "Number of slots:")
+    ddl := Panel.AddDropDownList("x+4 yp+2 w56 Choose" MAX_SLOTS, ["1", "2", "3", "4", "5", "6", "7", "8"])
     ddl.OnEvent("Change", SetSlotCount)
     Hint(Panel.AddText("xs y+10 w624 h24 0x200 cGray", "Version " APP_VERSION ".  Double-click a slot to switch to it. Changing the number of slots saves and reloads."))
     Panel.AddText("xm y+6 w624 h1 0x10")                 ; separator line
@@ -4852,6 +5117,8 @@ ToggleVFX=^!v
 CreateView=^!c
 DeleteView=^!d
 ViewManager=^!e
+; Layouts window (pictures and explanations of every layout); empty = no hotkey
+LayoutsWindow=
 ; Team helpers (type EverQuest's /target, /follow, /assist ... into the others)
 FollowMe=^!f
 StopFollow=^!x
