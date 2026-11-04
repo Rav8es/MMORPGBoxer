@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "MMORPG Boxer"
-global APP_VERSION := "1.6.0"
+global APP_VERSION := "1.6.1"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/MMORPGBoxer"
 global OLD_UPDATE_REPO := "Rav8es/BoxerPro"     ; its name before the rename
@@ -106,6 +106,7 @@ Loop MAX_SLOTS {
 global Presets := Map()
 Presets.CaseSense := false
 global PresetOrder := []
+global BuiltinLayouts := ["Grid", "Swap"]   ; layouts that can't be deleted
 LoadPresets()
 if !(Layout = "Grid" || Layout = "Swap" || Presets.Has(Layout))
     Layout := "Grid"
@@ -185,7 +186,6 @@ global NoTheme := Map()       ; control hwnd -> keeps its own colours
 global ThemedGuis := []       ; windows that follow the appearance setting
 global LVDrawn := Map()       ; ListViews that draw their own selection colours
 global LW := 0                ; Layouts window
-global BuiltinLayouts := ["Grid", "Swap"]
 
 ; ------------------------------ Hotkeys -------------------------------
 ; App hotkeys first (they take priority over broadcast hotkeys on the same key).

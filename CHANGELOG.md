@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.1
+- Fix: 1.6.0 wouldn't start ("This global variable has not been assigned a value: BuiltinLayouts"). The list of built-in layouts was created after the layouts were loaded.
+- Every build is now also checked for start-up code that uses a setting before it's created.
+
 ## 1.6.0
 - Fix: in dark mode the selected row in lists (for example the slot list in the control panel) was light with light text. Lists now draw the selected row in blue with white text.
 - New **Layouts** window (control panel **Layouts...**, toolbar **Layout**, tray menu): every layout with a picture of where each of your slots goes, an explanation of what it's for, each slot's size, and Use / Save Current Positions / Delete. It replaces the layout dropdown in the control panel. Ctrl+Alt+S still steps to the next layout.
