@@ -12,7 +12,7 @@
 - **EverQuest extras:** key broadcasting, mirror mode, team commands (follow me, assist me...), key maps, a separate eqclient.ini per character, frame-rate caps, and the login name filled in by Launch All.
 - **Setup Wizard, control panel with tooltips, dark mode,** and automatic updates.
 
-Each game only gets the features its publisher's rules allow; see [Supported games](#supported-games).
+Each game only gets the features its publisher's rules allow; see [Supported games](#supported-games) and the [official rules for each game](#official-rules-for-each-game).
 
 ## Quick start
 1. Download **[MMORPGBoxer-Setup.exe](https://github.com/Rav8es/MMORPGBoxer/releases/latest)** and run it. If Windows SmartScreen warns, click **More info → Run anyway** (the installer isn't code-signed).
@@ -86,6 +86,7 @@ MMORPG Boxer was called **EQ Boxer Pro** up to version 1.2.2. Updating, or runni
   - [Updates](#updates)
   - [Diagnostics](#diagnostics)
 - [Rules and fair play](#rules-and-fair-play)
+  - [Official rules for each game](#official-rules-for-each-game)
 
 ---
 
@@ -141,6 +142,8 @@ Every game follows its publisher's rules about software. Features a game doesn't
 - **EverQuest II:** boxing is allowed, but Daybreak's stated policy is that software may not issue simultaneous commands to several characters.
 - **Monsters & Memories:** boxing is allowed only on its 3-box server (Nunavoth), and every character must be played by hand.
 - **EVE Online:** multiboxing is allowed, but CCP bans input broadcasting and multiplexing, and overlays that use parts of other clients to act in them. Window positions and arrangements are allowed. MMORPG Boxer also keeps EVE's own window titles (`EVE - <character>`).
+
+The publishers' own pages are linked in [Official rules for each game](#official-rules-for-each-game).
 
 ### Starting the other games
 For the games started from their own launcher, start each character from the launcher (with LaunchPad, start it again for each account). MMORPG Boxer puts each window into the next free slot as it opens; Ctrl+Alt+F1… moves a client to another slot. Play in **windowed** mode, and set frame-rate limits in the game's own options.
@@ -821,3 +824,31 @@ Send that file to whoever is helping you fix a layout problem. The log is cleare
 - MMORPG Boxer never plays for you: nothing runs unless you press a key or click, and there are no timed sequences or automation.
 - For each game it only offers what that game's publisher allows (see [Supported games](#supported-games)): broadcasting and mirroring for EverQuest; one key or click acting in one client for EverQuest II and Monsters & Memories; window layout and switching for EVE Online.
 - No publisher officially endorses any multiboxing software. Use the features at your own risk, and check your server's rules: some servers (for example EverQuest's True Box progression servers, or Monsters & Memories' no-boxing servers) limit or forbid running several accounts on one PC.
+
+### Official rules for each game
+These are the publishers' own pages on boxing, third-party software and unattended play. The rules can change, so check them before you play. If a link has moved, please [open an issue](https://github.com/Rav8es/MMORPGBoxer/issues). Links checked November 2026.
+
+**EverQuest** (Daybreak Game Company)
+- [EverQuest Rules of Conduct and Play Nice Policies](https://help.daybreakgames.com/hc/en-us/articles/230629007-What-are-the-EverQuest-Rules-of-Conduct)
+- [AFK or unattended gameplay](https://help.daybreakgames.com/hc/en-us/articles/231115088-EverQuest-AFK-or-Unattended-Gameplay-): every character must be played while you're at the keyboard.
+- [What isn't allowed on True Box and other special-rules servers](https://help.daybreakgames.com/hc/en-us/articles/230630767): extra limits on some progression servers, including how many characters you may box.
+- [Regarding Third Party Cheat Programs](https://forums.daybreakgames.com/eq/index.php?threads/regarding-third-party-cheat-programs.250451/): the EverQuest team's forum post on third-party programs.
+- [EverQuest End User License Agreement](https://lpj.daybreakgames.com/eq/live/) and [Daybreak Terms of Service](https://www.daybreakgames.com/terms-of-service)
+- Not official: [Fanra's EverQuest Wiki, Utilities](https://everquest.fanra.info/wiki/Utilities) collects Daybreak staff answers on third-party programs, including that window management and key replication (but not automation) are allowed.
+
+**EverQuest II** (Daybreak Game Company)
+- [EverQuest II Rules of Conduct](https://help.daybreakgames.com/hc/en-us/articles/230625747-What-are-the-EverQuest-II-Rules-of-Conduct)
+- [AFK or unattended gameplay](https://help.daybreakgames.com/hc/en-us/articles/230625867-What-is-the-EverQuest-II-policy-on-AFK-or-Unattended-Gameplay)
+- [EverQuest II End User License Agreement](https://lpj.daybreakgames.com/eq2/live/) and [Daybreak Terms of Service](https://www.daybreakgames.com/terms-of-service)
+- The 2009 statement that boxing is allowed but software issuing simultaneous commands to several characters isn't. The original post on the old SOE forums is gone; [EQ2Wire's article](https://eq2wire.com/?p=2689) quotes it. MMORPG Boxer follows it, which is why broadcasting is off for EverQuest II.
+
+**Monsters & Memories** (Niche Worlds Cult)
+- [Early Access FAQ, "What servers are available?"](https://monstersandmemories.com/early-access-faq): Nunavoth (US PvE, 3 box) is the only server that allows boxing; the others are no boxing.
+- [What counts as boxing](https://account2.monstersandmemories.com/community/faqs?search=boxing) (official FAQ)
+- [Play Nice Policy](https://account2.monstersandmemories.com/policy/pnp)
+- [Master User Agreement](https://account2.monstersandmemories.com/policy/mau)
+
+**EVE Online** (CCP Games)
+- [Update regarding Multiboxing and input automation](https://forums-archive.eveonline.com/message/5241022) (CCP Falcon, 2014): multiboxing is allowed; input broadcasting and multiplexing of actions that affect the game are banned.
+- [Third Party Policies](https://support.eveonline.com/hc/en-us/articles/8564030965660-Third-Party-Policies): third-party software and client modification.
+- [Third party applications](https://support.eveonline.com/hc/en-us/articles/5888034246428-Third-party-applications): CCP's summary, with links to the EULA and Terms of Service.
