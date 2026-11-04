@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "EQ Boxer Pro"
-global APP_VERSION := "1.1.1"
+global APP_VERSION := "1.1.2"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/BoxerPro"
 ; installed copies ship an icon next to the script
@@ -533,7 +533,12 @@ Diagnostics(*) {
 ; (EQBoxerPro-Setup.exe.sha256). The download is only run if the checksums
 ; match. The installer runs silently (/S /UPDATE), keeps the settings and
 ; restarts EQ Boxer Pro.
-UpdateRepo() => Trim(Cfg("Update", "Repo", DEFAULT_UPDATE_REPO))
+; An empty "Repo=" line (as in a freshly created EQBoxer.ini) means "use the
+; built-in repository", the same as no line at all.
+UpdateRepo() {
+    v := Trim(Cfg("Update", "Repo", ""))
+    return (v != "") ? v : DEFAULT_UPDATE_REPO
+}
 
 HttpGet(url) {
     req := ComObject("WinHttp.WinHttpRequest.5.1")
@@ -3430,7 +3435,8 @@ HoldTime=40
 ShowFeedback=1
 
 [Update]
-; GitHub repository updates come from (owner/name). Empty = built-in default
+; GitHub repository updates come from (owner/name). Leave empty for the
+; built-in one (Rav8es/BoxerPro)
 Repo=
 ; Check for a newer version when EQ Boxer Pro starts (1/0)
 CheckOnStart=1

@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.2
+- Fix: "Check for Updates" said updates weren't set up on new installs. The empty `Repo=` line in a freshly created EQBoxer.ini now means "use the built-in repository".
+
 ## 1.1.1
 - Fix: title bars could stay visible on slots whose title bar is on screen (for example the bottom slots). EQ Boxer Pro now checks several times a second that each client is really clipped to its picture and puts the clip back if it's gone.
 - If a client keeps losing its clip, EQ Boxer Pro switches just that client to removing its title bar instead.
