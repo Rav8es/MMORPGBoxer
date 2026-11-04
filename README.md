@@ -583,6 +583,7 @@ See [Clickable views](#11-clickable-views-video-fx).
 | Typing in chat spams other clients | Pause the app with Ctrl+Alt+P while typing, or turn broadcast off. |
 | A hotkey error appears at startup | A hotkey in the INI is invalid. Fix or clear it. |
 | Views are black | The source client is minimized or closed. |
+| A view shows a different area than you selected | Update to 1.1.6 or later; views now line up with your selection automatically. If one is still off, send EQBoxer.log: it has a "view ..." line for each view. |
 | A view click lands in the wrong place | Delete it (Ctrl+Alt+D) and re-create it after the clients are arranged. |
 | Account name isn't filled in | Set it in the control panel (click the slot, type the Account name, Save), and start clients with **Launch All**. Clients started from LaunchPad don't get it. |
 | Control panel says "opened off-slot, restart it" | That client opened somewhere other than its slot, so its mouse is off. Close it and start it again with EQ Boxer running. Start clients one at a time, or use Launch All. |

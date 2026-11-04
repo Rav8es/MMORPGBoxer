@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "EQ Boxer Pro"
-global APP_VERSION := "1.1.5"
+global APP_VERSION := "1.1.6"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/BoxerPro"
 ; installed copies ship an icon next to the script
@@ -413,6 +413,7 @@ WatchClients() {
     if !Launching
         PrepareSlotIni(FirstFreeSlot())
     CheckOffSlot()
+    VfxCheck()
     if changed {
         CheckDpi()
         if AutoArrange
@@ -2232,23 +2233,90 @@ RefreshVFX() {
             g.Destroy()
             continue
         }
+        ; The selection is stored relative to the PICTURE (client area), but
+        ; Windows' image of a window can start at the window's outer corner
+        ; (title bar and border included), so shift it by where the picture
+        ; sits in that image. Without this the view showed an area up and to
+        ; the left of what was selected.
+        off := VfxPictureOffset(thumb, src)
         ; DWM_THUMBNAIL_PROPERTIES (48 bytes)
         props := Buffer(48, 0)
-        NumPut("UInt", 0x1F, props, 0)    ; RECTDESTINATION|RECTSOURCE|OPACITY|VISIBLE|SOURCECLIENTAREAONLY
+        NumPut("UInt", 0x0F, props, 0)    ; RECTDESTINATION|RECTSOURCE|OPACITY|VISIBLE (whole-window coordinates)
         NumPut("Int", 0, "Int", 0, "Int", v.Dst.w, "Int", v.Dst.h, props, 4)
-        NumPut("Int", Round(v.Src.x * sx), "Int", Round(v.Src.y * sy)
-             , "Int", Round((v.Src.x + v.Src.w) * sx), "Int", Round((v.Src.y + v.Src.h) * sy), props, 20)
+        NumPut("Int", off.x + Round(v.Src.x * sx), "Int", off.y + Round(v.Src.y * sy)
+             , "Int", off.x + Round((v.Src.x + v.Src.w) * sx), "Int", off.y + Round((v.Src.y + v.Src.h) * sy), props, 20)
         NumPut("UChar", v.Opacity, props, 36)
         NumPut("Int", 1, props, 40)
-        NumPut("Int", 1, props, 44)
+        NumPut("Int", 0, props, 44)       ; fSourceClientAreaOnly = FALSE
         DllCall("dwmapi\DwmUpdateThumbnailProperties", "Ptr", thumb, "Ptr", props)
         v.Gui := g
         v.Thumb := thumb
+        v.Off := off
         VfxByHwnd[g.Hwnd] := v
+        WriteLog("view " v.Name " (slot " v.Slot "): Windows' image of the client is " off.how
+            . " - picture starts at " off.x "," off.y " in it - " WinDesc(src))
     }
 }
 
 ; Left/right button pressed on a view -> click the same spot in the source client.
+; Where the picture (client area) starts inside Windows' (DWM's) image of a
+; window. That image may be the whole window, the visible frame, or just the
+; picture, depending on Windows' version and how the frame is drawn, so it's
+; measured from the image's size rather than assumed.
+VfxPictureOffset(thumb, src) {
+    try {
+        WinGetPos(&ox, &oy, &ow, &oh, "ahk_id " src)
+        WinGetClientPos(&px, &py, &pw, &ph, "ahk_id " src)
+    } catch
+        return {x: 0, y: 0, how: "unknown (window gone)"}
+    sz := Buffer(8, 0)
+    if (DllCall("dwmapi\DwmQueryThumbnailSourceSize", "Ptr", thumb, "Ptr", sz, "Int") != 0)
+        return {x: px - ox, y: py - oy, how: "unknown (assumed the whole window)"}
+    tw := NumGet(sz, 0, "Int"), th := NumGet(sz, 4, "Int")
+    if (Abs(tw - ow) <= 1 && Abs(th - oh) <= 1)
+        return {x: px - ox, y: py - oy, how: "the whole window " tw "x" th}
+    if (Abs(tw - pw) <= 1 && Abs(th - ph) <= 1)
+        return {x: 0, y: 0, how: "just the picture " tw "x" th}
+    ; the visible frame (Windows 10/11 keep invisible borders outside it)
+    rc := Buffer(16, 0)
+    if (DllCall("dwmapi\DwmGetWindowAttribute", "Ptr", src, "UInt", 9, "Ptr", rc, "UInt", 16, "Int") = 0) {   ; DWMWA_EXTENDED_FRAME_BOUNDS
+        el := NumGet(rc, 0, "Int"), et := NumGet(rc, 4, "Int")
+        if (Abs(tw - (NumGet(rc, 8, "Int") - el)) <= 1 && Abs(th - (NumGet(rc, 12, "Int") - et)) <= 1)
+            return {x: px - el, y: py - et, how: "the visible frame " tw "x" th}
+    }
+    ; the clip (EQ Boxer Pro's window region)
+    rk := RegionKey(src)
+    if (rk != "") {
+        r := StrSplit(rk, ",")
+        if (Abs(tw - r[3]) <= 1 && Abs(th - r[4]) <= 1)
+            return {x: px - ox - r[1], y: py - oy - r[2], how: "the clipped area " tw "x" th}
+    }
+    ; unknown size: assume it's anchored at the bottom-right of the window
+    ; (the left/top parts are what usually differ)
+    return {x: px - ox - (ow - tw), y: py - oy - (oh - th), how: "unrecognised " tw "x" th " (window " ow "x" oh ", picture " pw "x" ph ")"}
+}
+
+; Re-measure each view's source once a second; rebuild the views if a
+; client's frame changed (e.g. its title bar was hidden after the view was made).
+VfxCheck() {
+    static lastRebuild := 0
+    if (!VFXOn || A_TickCount - lastRebuild < 5000)
+        return
+    for v in VFX {
+        if (!v.Thumb || !v.HasOwnProp("Off"))
+            continue
+        src := (v.Slot >= 1 && v.Slot <= MAX_SLOTS) ? Slots[v.Slot] : 0
+        if !src
+            continue
+        now := VfxPictureOffset(v.Thumb, src)
+        if (now.x != v.Off.x || now.y != v.Off.y) {
+            lastRebuild := A_TickCount
+            RefreshVFX()
+            return
+        }
+    }
+}
+
 VfxMouse(wParam, lParam, msg, hwnd) {
     if !VfxByHwnd.Has(hwnd)
         return
