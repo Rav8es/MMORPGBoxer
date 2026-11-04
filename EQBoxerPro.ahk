@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "EQ Boxer Pro"
-global APP_VERSION := "1.1.0"
+global APP_VERSION := "1.1.1"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/BoxerPro"
 ; installed copies ship an icon next to the script
@@ -136,6 +136,7 @@ global Settle := Map()       ; id -> {w, h, t, ok}  start-up settle tracking
 global Fixes := Map()        ; id -> [tick, ...]    recent auto-corrections
 global ArrangedAt := Map()   ; id -> when it was last arranged
 global ClipFor := Map()      ; id -> picture area the window is clipped to
+global StripFallback := Map() ; id -> true: clip didn't hold, remove title bar instead
 global Placed := Map()       ; id -> true once a client has been arranged
 global Unmanaged := Map()    ; id -> true           clients we stopped fighting
 global KeyMaps := []
@@ -256,6 +257,7 @@ UpdateToolbar()
 WatchClients()
 SetTimer(WatchClients, 1000)
 SetTimer(CheckActive, 150)
+SetTimer(ClipGuard, 300)               ; keep hidden title bars hidden
 ; Open the control panel when the app starts ([General] ShowPanelOnStart)
 if (Cfg("General", "ShowPanelOnStart", "1") = "1" && !DllCall("IsWindowVisible", "Ptr", Panel.Hwnd))
     TogglePanel()
@@ -469,8 +471,9 @@ WinDesc(id) {
         WinGetPos(&x, &y, &w, &h, "ahk_id " id)
         WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " id)
         st := WinGetStyle("ahk_id " id)
-        return Format("window {},{} {}x{} | picture {},{} {}x{} | {}", x, y, w, h, cx, cy, cw, ch
-            , (st & 0xC00000) ? "title bar" : "no title bar")
+        rk := RegionKey(id)
+        return Format("window {},{} {}x{} | picture {},{} {}x{} | {} | clip {}", x, y, w, h, cx, cy, cw, ch
+            , (st & 0xC00000) ? "title bar" : "no title bar", rk = "" ? "none" : rk)
     }
     return "(window gone)"
 }
@@ -994,13 +997,63 @@ ClipKey(id) {
     return (px - ox) "," (py - oy) "," pw "," ph
 }
 
+; The clip a window ACTUALLY has right now ("l,t,w,h"), or "" for none.
+RegionKey(id) {
+    rc := Buffer(16, 0)
+    t := DllCall("GetWindowRgnBox", "Ptr", id, "Ptr", rc, "Int")
+    if (t != 2 && t != 3)                       ; SIMPLEREGION / COMPLEXREGION
+        return ""
+    l := NumGet(rc, 0, "Int"), tp := NumGet(rc, 4, "Int")
+    return l "," tp "," (NumGet(rc, 8, "Int") - l) "," (NumGet(rc, 12, "Int") - tp)
+}
+
+ClipIsRight(id) => (RegionKey(id) = ClipKey(id))
+
 ClipToPicture(id) {
     try {
         key := ClipKey(id)
         p := StrSplit(key, ",")
         rgn := DllCall("CreateRectRgn", "Int", p[1], "Int", p[2], "Int", p[1] + p[3], "Int", p[2] + p[4], "Ptr")
-        DllCall("SetWindowRgn", "Ptr", id, "Ptr", rgn, "Int", 1)     ; Windows owns rgn now
+        ok := DllCall("SetWindowRgn", "Ptr", id, "Ptr", rgn, "Int", 1)    ; Windows owns rgn now
         ClipFor[id] := key
+        if (!ok || !ClipIsRight(id))
+            WriteLog("slot " SlotOf(id) ": clipping to the picture did not take effect (SetWindowRgn=" ok ", error " A_LastError ") - " WinDesc(id))
+    }
+}
+
+; Watches clipped clients several times a second and puts the clip back if
+; it has gone (EverQuest or Windows may drop it). If a client keeps losing
+; it, that client is switched to removing its title bar instead.
+ClipGuard() {
+    static drops := Map()
+    if (!HideBorders || BorderMode() != "Clip" || Switching)
+        return
+    for n, id in Slots {
+        if (!id || !ClipFor.Has(id) || StripFallback.Has(id))
+            continue
+        try {
+            if ClipIsRight(id)
+                continue
+            now := A_TickCount
+            if !drops.Has(id)
+                drops[id] := []
+            list := drops[id]
+            list.Push(now)
+            while (list.Length && now - list[1] > 10000)
+                list.RemoveAt(1)
+            if (list.Length > 6) {
+                WriteLog("slot " n ": the clip keeps disappearing - switching this client to removing its title bar instead - " WinDesc(id))
+                StripFallback[id] := true
+                ClipFor.Delete(id)
+                DllCall("SetWindowRgn", "Ptr", id, "Ptr", 0, "Int", 1)
+                Placed.Delete(id)
+                Unmanaged.Delete(id)
+                SetTimer(Arrange, -200)
+                continue
+            }
+            WriteLog("slot " n ": clip was gone - putting it back - " WinDesc(id))
+            ClipToPicture(id)
+        }
     }
 }
 
@@ -1015,10 +1068,16 @@ PlaceClipped(id, x, y, w, h) {
     n := SlotOf(id)
     sizeOK := (Abs(pw - w) <= 1 && Abs(ph - h) <= 1)
     posOK := (px = x && py = y)
-    clipOK := (ClipFor.Has(id) && ClipFor[id] = ClipKey(id))
+    clipOK := ClipIsRight(id)
     Placed[id] := true
     if (sizeOK && posOK && clipOK)
         return false
+    if (sizeOK && posOK) {
+        ; only the clip is missing: put it back, nothing else to change
+        WriteLog("slot " n ": picture in place, applying the clip - " WinDesc(id))
+        ClipToPicture(id)
+        return true
+    }
     ; while running, a size EverQuest chose itself is accepted (no fighting)
     if (Enforcing && !sizeOK && posOK && clipOK)
         return false
@@ -1066,7 +1125,7 @@ FollowUpClip(id, x, y, w, h, tries, *) {
         WinGetClientPos(&px, &py, &pw, &ph, "ahk_id " id)
         sizeOK := (Abs(pw - w) <= 1 && Abs(ph - h) <= 1)
         posOK := (px = x && py = y)
-        clipOK := (ClipFor.Has(id) && ClipFor[id] = ClipKey(id))
+        clipOK := ClipIsRight(id)
         if (sizeOK && posOK && clipOK) {
             WriteLog("slot " n ": in place - " desc " | clipped to picture")
             lastSeen.Delete(id)
@@ -1190,7 +1249,7 @@ PlaceWindow(id, x, y, w, h) {
         return false
     if (Enforcing && Unmanaged.Has(id))
         return false
-    if (HideBorders && BorderMode() = "Clip")
+    if (HideBorders && BorderMode() = "Clip" && !StripFallback.Has(id))
         return PlaceClipped(id, x, y, w, h)
     ; After a client has been arranged once, leave its size alone: fighting
     ; EverQuest over size makes the picture shrink, grow or stretch. Only step

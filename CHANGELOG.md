@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1
+- Fix: title bars could stay visible on slots whose title bar is on screen (for example the bottom slots). EQ Boxer Pro now checks several times a second that each client is really clipped to its picture and puts the clip back if it's gone.
+- If a client keeps losing its clip, EQ Boxer Pro switches just that client to removing its title bar instead.
+- The window log and Diagnostics now show each window's actual clip.
+
 ## 1.1.0
 - Automatic updates from GitHub releases (Update now / Later / Skip this version), with SHA-256 checksum verification; settings are kept.
 - "Check for Updates" in the control panel and tray menu; version shown in the control panel.
