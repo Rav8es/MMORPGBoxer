@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "EQ Boxer Pro"
-global APP_VERSION := "1.2.1"
+global APP_VERSION := "1.2.2"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/BoxerPro"
 ; installed copies ship an icon next to the script
@@ -407,10 +407,64 @@ UpdateTitles() {
             continue
         want := "EQ" n (Chars[n] != "" ? " - " Chars[n] : "")
         try {
-            if (WinGetTitle("ahk_id " id) != want)
+            cur := WinGetTitle("ahk_id " id)
+            if (cur != want) {
+                ; EverQuest resets its title when it changes screens (for
+                ; example logging out to server select). It also reloads its
+                ; resolution from the shared eqclient.ini then, which holds
+                ; another slot's size, so its picture ends up stretched.
+                ; Once it has finished switching, make it redraw at its
+                ; real window size.
+                if (Placed.Has(id) && !RegExMatch(cur, "^EQ" n "\b")) {
+                    WriteLog("slot " n ": EverQuest changed its title to '" cur "' (changing screens) - will re-sync it")
+                    SetTimer(ResyncLater.Bind(id, 0), -3000)
+                }
                 WinSetTitle(want, "ahk_id " id)
+            }
         }
     }
+}
+
+; Wait until the client's window has stopped changing, then re-sync it.
+ResyncLater(id, tries, *) {
+    static last := Map()
+    if !WinExist("ahk_id " id)
+        return
+    desc := WinDesc(id)
+    if (tries < 10 && (!last.Has(id) || last[id] != desc)) {
+        last[id] := desc
+        SetTimer(ResyncLater.Bind(id, tries + 1), -1000)
+        return
+    }
+    if last.Has(id)
+        last.Delete(id)
+    ResyncClient(id, "after changing screens")
+}
+
+; Make EverQuest redraw at its window's real size: a tiny resize and back,
+; wrapped in the "resize started/finished" messages a window-edge drag sends.
+; Fixes a stretched or squashed picture after EverQuest picked up another
+; slot's resolution from eqclient.ini.
+ResyncClient(id, why) {
+    try {
+        if (WinGetMinMax("ahk_id " id) = -1)
+            return
+        WinGetPos(&ox, &oy, &ow, &oh, "ahk_id " id)
+    } catch
+        return
+    WriteLog("slot " SlotOf(id) ": re-sync (" why ") - telling EverQuest to redraw at its window size - " WinDesc(id))
+    try SendMessage(0x231, 0, 0, , "ahk_id " id, , , , 1000)          ; WM_ENTERSIZEMOVE
+    DllCall("SetWindowPos", "Ptr", id, "Ptr", 0, "Int", ox, "Int", oy, "Int", ow, "Int", oh - 2, "UInt", 0x14)
+    DllCall("SetWindowPos", "Ptr", id, "Ptr", 0, "Int", ox, "Int", oy, "Int", ow, "Int", oh, "UInt", 0x14)
+    try SendMessage(0x232, 0, 0, , "ahk_id " id, , , , 1000)          ; WM_EXITSIZEMOVE
+    ArrangedAt[id] := A_TickCount
+    SetTimer(LogAfter.Bind(id, "2 s after re-sync"), -2000)
+}
+
+ResyncAll(*) {
+    for n, id in Slots
+        if (id && Placed.Has(id))
+            ResyncClient(id, "Arrange")
 }
 
 WatchClients() {
@@ -1437,7 +1491,10 @@ ManualArrange(*) {
     ForceResync := true
     try Arrange()
     ForceResync := false
-    Status("Arranged " CountClients() " client(s). If one looks stretched, close it and start it again.", 6000)
+    ; also make every client redraw at its window size (fixes a stretched
+    ; picture, e.g. after logging out to server select)
+    SetTimer(ResyncAll, -1500)
+    Status("Arranged and re-synced " CountClients() " client(s).", 4000)
 }
 
 ; The screen area layouts use: the whole monitor, or (UseWorkArea=1) the part
@@ -3325,7 +3382,7 @@ BuildToolbar() {
               , ["vfx", "Show or hide your clickable views", "ToggleVFX", "^!v"]
               , ["audio", "Sound from the client you're in only, or from all clients", "ToggleAudio", "^!o"]
               , ["views", "Open Clickable Views: make, move, change and delete views", "ViewManager", "^!e"]
-              , ["arrange", "Put every client back in its slot", "Arrange", "^!g"]
+              , ["arrange", "Put every client back in its slot and make it redraw at its size`n(fixes a stretched picture)", "Arrange", "^!g"]
               , ["layout", "Switch to the next layout", "ToggleLayout", "^!s"]
               , ["launch", "Start every slot that has a character", "LaunchAll", "^!l"]
               , ["pause", "Pause or resume all EQ Boxer Pro hotkeys", "Pause", "^!p"]
@@ -3723,7 +3780,7 @@ BuildPanel() {
         AddTip(b, tip)
     }
     PB("xm y+12 " bw " Section", "Launch All", LaunchAll, TipText("Start every slot that has a character", "LaunchAll", "^!l"))
-    PB("x+8 yp " bw, "Arrange", ManualArrange, TipText("Put every client back in its slot", "Arrange", "^!g"))
+    PB("x+8 yp " bw, "Arrange", ManualArrange, TipText("Put every client back in its slot and make it redraw at its size (fixes a stretched picture)", "Arrange", "^!g"))
     PB("x+8 yp " bw, "Save Layout...", SaveLayout, TipText("Save where the clients are now as a new layout"))
     PB("x+8 yp " bw, "Mirror On/Off", ToggleMirror, TipText("Clicks are repeated in every client", "ToggleMirror", "^!m"))
     PB("xs y+8 " bw, "Broadcast On/Off", ToggleBroadcast, TipText("Keys you press are pressed in every client", "ToggleBroadcast", "^!b"))

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.2
+- Fix: a client's picture could end up stretched after logging out to server select (seen on the full-width slot 1). EverQuest reloads its resolution from eqclient.ini when it changes screens, and that shared file holds another slot's size. EQ Boxer Pro now notices EverQuest changing screens and makes that client redraw at its real window size a few seconds later.
+- **Arrange** (Ctrl+Alt+G) now also makes every client redraw at its window size, so it fixes a stretched picture straight away.
+
 ## 1.2.1
 - Fix: 1.2.0 wouldn't start ("Error: Missing """ at line 2716). A message in the new Clickable Views window had a semicolon that AutoHotkey read as the start of a comment.
 - Every build is now checked for this kind of mistake before it's released.
