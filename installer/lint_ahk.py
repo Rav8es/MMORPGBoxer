@@ -139,7 +139,8 @@ for idx in top:
         continue
     for f in reach(started):
         a, _ = funcs[f]
-        used = {w.lower() for w in re.findall(r"(?<![.\w])([A-Za-z_]\w*)\b", body(f))}
+        text = re.sub(r"(?<![.\w?])[A-Za-z_]\w*\s*:(?!=)", " ", body(f))   # object-literal keys {name: ...}
+        used = {w.lower() for w in re.findall(r"(?<![.\w])([A-Za-z_]\w*)\b", text)}
         for g in used & set(globals_at):
             if globals_at[g] > idx:
                 errors.append(f"line {idx + 1} runs {f}() before line {globals_at[g] + 1} creates global {g}")

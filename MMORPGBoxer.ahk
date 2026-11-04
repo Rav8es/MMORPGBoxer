@@ -31,22 +31,30 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "MMORPG Boxer"
-global APP_VERSION := "1.6.2"
+global APP_VERSION := "1.7.0"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/MMORPGBoxer"
 global OLD_UPDATE_REPO := "Rav8es/BoxerPro"     ; its name before the rename
 ; installed copies ship an icon next to the script
 if FileExist(A_ScriptDir "\MMORPGBoxer.ico")
     TraySetIcon(A_ScriptDir "\MMORPGBoxer.ico")
-global CFG_FILE := A_ScriptDir "\MMORPGBoxer.ini"
+; MMORPGBoxer.ini holds the EverQuest setup and which game is chosen
+; ([General] Game). Other games keep their own file, MMORPGBoxer-<game>.ini.
+global MAIN_CFG := A_ScriptDir "\MMORPGBoxer.ini"
 global LOG_FILE := A_ScriptDir "\MMORPGBoxer.log"     ; window placement log (Diagnostics)
 ; This app used to be called EQ Boxer Pro: pick up its settings and log.
-if (!FileExist(CFG_FILE) && FileExist(A_ScriptDir "\EQBoxer.ini"))
-    try FileCopy(A_ScriptDir "\EQBoxer.ini", CFG_FILE)
+if (!FileExist(MAIN_CFG) && FileExist(A_ScriptDir "\EQBoxer.ini"))
+    try FileCopy(A_ScriptDir "\EQBoxer.ini", MAIN_CFG)
 if (!FileExist(LOG_FILE) && FileExist(A_ScriptDir "\EQBoxer.log"))
     try FileCopy(A_ScriptDir "\EQBoxer.log", LOG_FILE)
-if !FileExist(CFG_FILE)
+global GAME := GameIdOf(IniRead(MAIN_CFG, "General", "Game", "EverQuest"))
+global GameDef := GameInfo(GAME)
+global CFG_FILE := (GAME = "EverQuest") ? MAIN_CFG : A_ScriptDir "\MMORPGBoxer-" GAME ".ini"
+if !FileExist(CFG_FILE) {
     WriteDefaultConfig()
+    if (GAME != "EverQuest")
+        WriteGameDefaults()
+}
 
 ; EverQuest usually runs as administrator. Windows then blocks a normal
 ; program from seeing keys pressed in it or sending keys to it, so the
@@ -59,11 +67,11 @@ if (!A_IsAdmin && Cfg("General", "RunAsAdmin", "1") = "1") {
 }
 
 ; Number of client slots in use (1-8), set in [General] Slots= or the control panel
-global MAX_SLOTS := Max(1, Min(8, ToInt(Cfg("General", "Slots", "4"), 4)))
+global MAX_SLOTS := Max(1, Min(GameDef.maxSlots, ToInt(Cfg("General", "Slots", "4"), 4)))
 
 ; ------------------------------ Settings ------------------------------
-global EQPath         := Cfg("General", "EQPath", "C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest")
-global EQExe          := Cfg("General", "EQExe", "eqgame.exe")
+global EQPath         := Cfg("General", "EQPath", GameDef.folder)
+global EQExe          := Cfg("General", "EQExe", GameDef.exe)
 global LaunchArgs     := Cfg("General", "LaunchArgs", "patchme")
 ; Older versions used 4000 / 8000. Those were too short: a client was still
 ; starting up when the next one launched or when its borders were removed,
@@ -83,7 +91,7 @@ global SwapOnActivate := Cfg("General", "SwapOnActivate", "1") = "1"
 global SettleTime     := ToInt(Cfg("General", "SettleTime", "15000"), 15000)
 ; Write the next free slot's position/size into eqclient.ini before a client
 ; starts, so EverQuest opens right in its slot (keeps the mouse aligned).
-global PrepareIni     := Cfg("General", "PrepareIni", "1") = "1"
+global PrepareIni     := GameDef.eqIni && Cfg("General", "PrepareIni", "1") = "1"
 ; Fit layouts inside the area above the taskbar instead of the whole screen
 global UseWorkArea    := Cfg("General", "UseWorkArea", "1") = "1"
 global EQ             := "ahk_exe " EQExe
@@ -174,7 +182,7 @@ global VM := 0                ; Clickable Views window and its controls
 global TipsOn := Cfg("General", "ShowTooltips", "1") = "1"
 global Tips := Map()          ; control hwnd -> tooltip text
 global TipHwnd := 0           ; control the pointer is over
-global ProfilesOn := Cfg("Profiles", "PerCharacter", "1") = "1"
+global ProfilesOn := GameDef.eqIni && Cfg("Profiles", "PerCharacter", "1") = "1"
 global IniHolder := 0         ; slot whose own settings eqclient.ini holds right now
 global IniStamp := ""         ; eqclient.ini's time/size when we last wrote or saved it
 global LastClosed := {n: 0, t: 0}   ; the slot whose client closed most recently
@@ -232,7 +240,7 @@ BindHotkey("ToggleAudio",     "^!o", ToggleAudio)
 BindHotkey("SetupWizard",     "^!w", ShowWizard)
 
 mouseKey := Cfg("Hotkeys", "MouseBroadcast", "XButton1")
-if (mouseKey != "") {
+if (mouseKey != "" && GameDef.together) {
     HotIfWinActive(EQ)
     TryHotkey(mouseKey, MouseBroadcast)
     HotIfWinActive()
@@ -315,6 +323,94 @@ Status(APP " ready" (A_IsAdmin ? " (admin)" : " (NOT admin - broadcast may not w
 ; =====================================================================
 ;                               Functions
 ; =====================================================================
+
+; -------------------------------- Games --------------------------------
+; What MMORPG Boxer knows about each game, and which features the game's
+; rules allow. together = features where one key press or click acts in
+; several clients (broadcast, mirror mode, team commands, key maps).
+GameInfo(id) {
+    if (id = "MonstersAndMemories")
+        return {id: id, name: "Monsters & Memories", exe: "mnm.exe", folder: "C:\MnM"
+            , launchers: ["MnMLauncher.exe", "mnm_launcher.exe"], maxSlots: 3, together: false
+            , eqIni: false, loginArg: false, settle: 10000
+            , rules: "Monsters & Memories allows boxing only on its 3-box server (Nunavoth), and every character must be played by hand. "
+                . "So for this game MMORPG Boxer leaves out broadcasting, mirror mode, team commands and key maps, and allows at most 3 slots."}
+    return {id: "EverQuest", name: "EverQuest", exe: "eqgame.exe"
+        , folder: "C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest"
+        , launchers: [], maxSlots: 8, together: true, eqIni: true, loginArg: true, settle: 15000, rules: ""}
+}
+
+GameNames() => ["EverQuest", "Monsters & Memories"]
+
+GameIdOf(name) => InStr(name, "Monsters") ? "MonstersAndMemories" : "EverQuest"
+
+; Status message for a feature this game's rules don't allow; true if blocked.
+NotForGame(what) {
+    if GameDef.together
+        return false
+    Status(what " isn't available for " GameDef.name ": every character must be played by hand.", 5000)
+    return true
+}
+
+; First start for a game other than EverQuest: its own sensible defaults,
+; and the look of the app copied from the EverQuest settings.
+WriteGameDefaults() {
+    W(sec, key, val) => IniWrite(val, CFG_FILE, sec, key)
+    W("General", "Game", GameDef.name)
+    W("General", "EQPath", GameDef.folder)
+    W("General", "EQExe", GameDef.exe)
+    W("General", "LaunchArgs", "")
+    W("General", "Slots", GameDef.maxSlots)
+    W("General", "Layout", "Top + 2 Bottom")
+    W("General", "SettleTime", GameDef.settle)
+    W("General", "PrepareIni", 0)
+    W("Profiles", "PerCharacter", 0)
+    W("Login", "UseLoginArg", 0)
+    for sec in StrSplit(IniRead(CFG_FILE), "`n")
+        if (SubStr(sec, 1, 7) = "KeyMap.")
+            IniDelete(CFG_FILE, sec)
+    for key in ["Appearance", "ShowTooltips", "ShowPanelOnStart", "RunAsAdmin", "Monitor", "UseWorkArea"]
+        try {
+            v := IniRead(MAIN_CFG, "General", key)
+            W("General", key, v)
+        }
+    for key in ["Show", "Vertical", "FontSize", "Opacity", "Color", "ButtonColor", "TextColor", "OnColor"]
+        try {
+            v := IniRead(MAIN_CFG, "Toolbar", key)
+            W("Toolbar", key, v)
+        }
+}
+
+; Is this the game's folder (it has the game or its launcher in it)?
+GamePathOK(path) {
+    path := Trim(path)
+    if FileExist(path "\" GameDef.exe)
+        return true
+    for f in GameDef.launchers
+        if FileExist(path "\" f)
+            return true
+    return FileExist(path "\mnm\" GameDef.exe) != ""
+}
+
+; The game's own launcher (games MMORPG Boxer can't start directly).
+LauncherExe() {
+    for f in GameDef.launchers
+        if FileExist(EQPath "\" f)
+            return EQPath "\" f
+    return ""
+}
+
+; Switch to another game: remember it and restart with that game's setup.
+SetGame(name, *) {
+    id := GameIdOf(name)
+    if (id = GAME)
+        return
+    if (MsgBox("Switch MMORPG Boxer to " GameInfo(id).name "?`n`nEach game keeps its own slots, layouts and settings. MMORPG Boxer restarts"
+        . (FileExist(id = "EverQuest" ? MAIN_CFG : A_ScriptDir "\MMORPGBoxer-" id ".ini") ? "." : " and opens the Setup Wizard for it."), APP, "YesNo Iconi 262144") != "Yes")
+        return false
+    IniWrite(GameInfo(id).name, MAIN_CFG, "General", "Game")
+    Reload()
+}
 
 ; ----------------------------- Config I/O -----------------------------
 Cfg(sec, key, def := "") {
@@ -450,7 +546,7 @@ UpdateTitles() {
                 ; another slot's size, so its picture ends up stretched.
                 ; Once it has finished switching, make it redraw at its
                 ; real window size.
-                if (Placed.Has(id) && !RegExMatch(cur, "^EQ" n "\b")) {
+                if (GameDef.eqIni && Placed.Has(id) && !RegExMatch(cur, "^EQ" n "\b")) {
                     WriteLog("slot " n ": EverQuest changed its title to '" cur "' (changing screens) - will re-sync it")
                     SetTimer(ResyncLater.Bind(id, 0), -3000)
                 }
@@ -749,7 +845,7 @@ ApplyCpuAll(*) {
 TeamDo(kind, *) {
     global Switching
     static busy := false
-    if busy
+    if (busy || NotForGame("Team commands"))
         return
     act := SlotOf(WinActive(EQ))
     if !act {
@@ -829,6 +925,8 @@ TeamDo(kind, *) {
 }
 
 TeamMenu(*) {
+    if NotForGame("Team commands")
+        return
     H(name, def) => (k := Cfg("Hotkeys", name, def)) != "" ? "`t" NiceKey(k) : ""
     m := Menu()
     m.Add("Follow me" H("FollowMe", "^!f"), TeamDo.Bind("follow"))
@@ -896,7 +994,13 @@ ShowPerf(*) {
         PF.stop := g.AddEdit("x+4 yp w120", Cfg("Team", "StopFollowKey", "Down"))
         PF.stop.OnEvent("Change", (c, *) => IniWrite(Trim(c.Value), CFG_FILE, "Team", "StopFollowKey"))
         AddTip(PF.stop, "The key that walks backwards in EverQuest (pressing it breaks /follow). AutoHotkey key name, e.g. Down or s.")
-        Hint(g.AddText("xm y+12 w700 cGray", "Follow and assist type EverQuest's own commands (/target, /follow, /assist, /attack) into each other client in turn, the same way broadcast reaches them."))
+        if !GameDef.together
+            for c in [PF.name, PF.stop]
+                c.Enabled := false
+        if !GameDef.eqIni
+            for c in [PF.fg, PF.bg, PF.prof]
+                c.Enabled := false
+        Hint(g.AddText("xm y+12 w700 cGray", !GameDef.together ? "Team commands, frame-rate caps and per-character settings files aren't used for " GameDef.name ". CPU cores and priority work as usual." : "Follow and assist type EverQuest's own commands (/target, /follow, /assist, /attack) into each other client in turn, the same way broadcast reaches them."))
         g.OnEvent("Close", (*) => g.Hide())
         g.OnEvent("Escape", (*) => g.Hide())
         ThemeGui(g)
@@ -1053,10 +1157,10 @@ CheckDpi() {
             continue
         if (aware = 0) {
             warned := true
-            MsgBox("Windows is scaling the EverQuest clients (display scale "
+            MsgBox("Windows is scaling the " GameDef.name " clients (display scale "
                 . Round(A_ScreenDPI / 96 * 100) "%).`n`n"
                 . "This makes the mouse line up only in the top-left window.`n`n"
-                . "Fix: right-click eqgame.exe > Properties > Compatibility >`n"
+                . "Fix: right-click " EQExe " > Properties > Compatibility >`n"
                 . "Change high DPI settings > check 'Override high DPI scaling`n"
                 . "behavior' and choose 'Application'. Then restart the clients."
                 , APP, "Icon! T60")
@@ -1090,14 +1194,15 @@ WinDesc(id) {
 ; to MMORPGBoxer-diagnostics.txt, copies it to the clipboard and opens it.
 Diagnostics(*) {
     t := APP " diagnostics  " FormatTime(, "yyyy-MM-dd HH:mm:ss") "`r`n"
-    t .= "Admin: " (A_IsAdmin ? "yes" : "no") "   Screen DPI: " A_ScreenDPI "   Layout: " Layout "   Slots: " MAX_SLOTS "`r`n"
+    t .= "Game: " GameDef.name " (" EQExe ")   Admin: " (A_IsAdmin ? "yes" : "no") "   Screen DPI: " A_ScreenDPI "   Layout: " Layout "   Slots: " MAX_SLOTS "`r`n"
     MonitorGet(MonitorNum, &mL, &mT, &mR, &mB)
     MonitorGetWorkArea(MonitorNum, &wL, &wT, &wR, &wB)
     t .= Format("Monitor {}: {},{} - {},{}   work area: {},{} - {},{}", MonitorNum, mL, mT, mR, mB, wL, wT, wR, wB) "`r`n"
     bs := BorderSize()
     t .= "Border size (w x h added): " bs.w " x " bs.h "   UseWorkArea=" UseWorkArea "  HideBorders=" HideBorders "`r`n"
     ini := EQPath "\eqclient.ini"
-    try t .= "eqclient.ini now: XOffset=" IniRead(ini, "Defaults", "WindowedModeXOffset", "?")
+    if GameDef.eqIni
+        try t .= "eqclient.ini now: XOffset=" IniRead(ini, "Defaults", "WindowedModeXOffset", "?")
         . " YOffset=" IniRead(ini, "Defaults", "WindowedModeYOffset", "?")
         . " WindowedWidth=" IniRead(ini, "VideoMode", "WindowedWidth", "?")
         . " WindowedHeight=" IniRead(ini, "VideoMode", "WindowedHeight", "?")
@@ -2502,6 +2607,16 @@ AssignSlot(n, *) {
 ; ------------------------------- Launcher -----------------------------
 LaunchAll(*) {
     global Launching, IniStamp
+    if (GameDef.launchers.Length) {
+        ; started (and logged in) from the game's own launcher; MMORPG Boxer
+        ; puts each client in the next free slot as its window opens
+        if (exe := LauncherExe())
+            Run('"' exe '"', EQPath)
+        else
+            MsgBox("Couldn't find the " GameDef.name " launcher in " EQPath ".`n`nSet the folder in the Setup Wizard (Ctrl+Alt+W), or start the launcher yourself.", APP, "Icon!")
+        Status("Start each character from the " GameDef.name " launcher. MMORPG Boxer puts each window in the next free slot as it opens (Ctrl+Alt+F1-F" MAX_SLOTS " moves a client to another slot).", 12000)
+        return
+    }
     exe := EQPath "\" EQExe
     if !FileExist(exe) {
         MsgBox("Can't find " exe "`n`nSet EQPath in MMORPGBoxer.ini.", APP, "Icon!")
@@ -2608,6 +2723,8 @@ CheckOffSlot() {
 
 ; ------------------------------- Key maps -----------------------------
 LoadKeyMaps() {
+    if !GameDef.together
+        return                      ; key maps reach other clients: not for this game
     sections := ""
     try sections := IniRead(CFG_FILE)
     for sec in StrSplit(sections, "`n") {
@@ -2797,6 +2914,8 @@ BcUp(k, *) {
 
 ToggleBroadcast(*) {
     global Broadcasting
+    if (!Broadcasting && NotForGame("Broadcasting"))
+        return
     Broadcasting := !Broadcasting
     state := Broadcasting ? "On" : "Off"
     BcHeld.Clear()
@@ -2848,6 +2967,8 @@ SwitchBroadcast(k) {
 
 ; Mouse button 4: one mirrored left-click at the pointer, in every client.
 MouseBroadcast(*) {
+    if NotForGame("The mirrored click")
+        return
     MouseGetPos(, , &win)
     if SlotOf(win)
         MirrorClickFrom(win, "Left", true)
@@ -2857,6 +2978,8 @@ MouseBroadcast(*) {
 ; click is made at the same spot (relative to window size) in every other one.
 ToggleMirror(*) {
     global Mirroring
+    if (!Mirroring && NotForGame("Mirror mode"))
+        return
     Mirroring := !Mirroring
     state := Mirroring ? "On" : "Off"
     HotIfWinActive(EQ)
@@ -3256,7 +3379,7 @@ PickViewSource(prompt) {
         }
     }
     if !srcSlot {
-        Status("That area isn't inside an EverQuest client", 4000)
+        Status("That area isn't inside a game client", 4000)
         return 0
     }
     refW := ToInt(Cfg("VFX", "ReferenceWidth", "1920"), 1920)
@@ -3386,7 +3509,7 @@ ShowViews(*) {
         AddTip(VM.start, TipText("Turn views on automatically every time the app starts"))
         g.AddText("xm y+12 w160 h28 0x200", "Clicking a view:")
         VM.mode := g.AddDropDownList("x+4 yp w476", ["Switch - click the real button in that client (most reliable)"
-            , "Send - click in the background (EverQuest may ignore it)", "Focus - just switch to that client"])
+            , "Send - click in the background (the game may ignore it)", "Focus - just switch to that client"])
         VM.mode.OnEvent("Change", (c, *) => IniWrite(StrSplit(c.Text, " ")[1], CFG_FILE, "VFX", "ClickMode"))
         AddTip(VM.mode, TipText("What happens when you click a view"))
         VM.status := Hint(g.AddText("xm y+12 w640 cGray", "Tip: views need the client they copy from to be running and not minimized."))
@@ -4001,19 +4124,32 @@ ShowWizard(*) {
         return ctrl
     }
 
-    ; ---- page 1: EverQuest folder ----
-    P(1, g.AddText("xs ys w620", "This wizard sets up MMORPG Boxer in a few steps. You can run it again any time from the control panel, the tray menu, or Ctrl+Alt+W.`n`nFirst, where is EverQuest installed? (The folder that contains eqgame.exe.)"))
-    Wiz.path := P(1, g.AddEdit("xs y+12 w500", EQPath))
+    ; ---- page 1: game and its folder ----
+    P(1, g.AddText("xs ys w620", "This wizard sets up MMORPG Boxer in a few steps. You can run it again any time from the control panel, the tray menu, or Ctrl+Alt+W."))
+    P(1, g.AddText("xs y+12 w60 h28 0x200", "Game:"))
+    Wiz.game := P(1, g.AddDropDownList("x+4 yp w240", GameNames()))
+    Wiz.game.Choose(GAME = "EverQuest" ? 1 : 2)
+    Wiz.game.OnEvent("Change", (c, *) => (SetGame(c.Text) = false ? c.Choose(GAME = "EverQuest" ? 1 : 2) : 0))
+    P(1, Hint(g.AddText("x+10 yp w300 h28 0x200 cGray", "Each game keeps its own setup.")))
+    if (GameDef.rules != "")
+        P(1, g.AddText("xs y+8 w620 cB8860B", GameDef.rules))
+    P(1, g.AddText("xs y+12 w620", GameDef.launchers.Length
+        ? "Where is " GameDef.name " installed? (The folder with its launcher, for example " GameDef.folder ".)"
+        : "Where is " GameDef.name " installed? (The folder that contains " GameDef.exe ".)"))
+    Wiz.path := P(1, g.AddEdit("xs y+8 w500", EQPath))
     Wiz.path.OnEvent("Change", WizCheckPath)
     P(1, g.AddButton("x+8 yp-1 w110", "Browse...")).OnEvent("Click", WizBrowse)
     Wiz.pathInfo := P(1, g.AddText("xs y+6 w620", ""))
-    Wiz.admin := P(1, g.AddCheckbox("xs y+16 w620", "Run MMORPG Boxer as administrator (recommended - EverQuest usually runs as administrator, and keys can only reach it if MMORPG Boxer does too)"))
+    Wiz.admin := P(1, g.AddCheckbox("xs y+16 w620", "Run MMORPG Boxer as administrator (recommended - games often run as administrator, and keys and clicks can only reach them if MMORPG Boxer does too)"))
     Wiz.admin.Value := Cfg("General", "RunAsAdmin", "1") = "1"
 
     ; ---- page 2: number of slots ----
-    P(2, g.AddText("xs ys w620", "How many EverQuest clients do you play at the same time?`n`nEach client gets a numbered slot. Slot 1 is usually your main character (for example your tank)."))
+    P(2, g.AddText("xs ys w620", "How many " GameDef.name " clients do you play at the same time?" (GameDef.maxSlots < 8 ? " (" GameDef.name " allows at most " GameDef.maxSlots ".)" : "") "`n`nEach client gets a numbered slot. Slot 1 is usually your main character (for example your tank)."))
     P(2, g.AddText("xs y+14 w130 h28 0x200", "Number of slots:"))
-    Wiz.count := P(2, g.AddDropDownList("x+6 yp w70 Choose" MAX_SLOTS, ["1", "2", "3", "4", "5", "6", "7", "8"]))
+    counts := []
+    Loop GameDef.maxSlots
+        counts.Push(String(A_Index))
+    Wiz.count := P(2, g.AddDropDownList("x+6 yp w70 Choose" MAX_SLOTS, counts))
 
     ; ---- page 3: characters & accounts ----
     P(3, g.AddText("xs ys w620", "For each slot: a label (shown in window titles and on the toolbar, for example Tank), the character's name in EverQuest (used by follow and assist), the account name (filled in at the login screen; no passwords are stored) and a resolution ('Fill slot' uses the slot's whole space)."))
@@ -4031,6 +4167,10 @@ ShowWizard(*) {
         rs := g.AddDropDownList("x+6 yp w140", ResolutionChoices())
         SetResChoice(rs, SlotResText(n))
         rs.OnEvent("Change", WizResChange)
+        if !GameDef.together
+            ig.Enabled := false          ; in-game names are for team commands
+        if !GameDef.loginArg
+            ac.Enabled := false          ; this game logs in through its own launcher
         Wiz.rows.Push({lbl: lbl, name: nm, ign: ig, acct: ac, res: rs})
         for c in [lbl, nm, ig, ac, rs]
             P(3, c)
@@ -4056,6 +4196,8 @@ ShowWizard(*) {
     P(5, g.AddText("xs ys w620", "How the clients work together and run. You can change all of this later under Team && Performance in the control panel."))
     Wiz.prof := P(5, g.AddCheckbox("xs y+12 w620", "Separate EverQuest settings file for each character (recommended). Each keeps its own graphics and window settings, and a client that logs out keeps its own resolution."))
     Wiz.prof.Value := ProfilesOn
+    if !GameDef.eqIni
+        Wiz.prof.Enabled := false
     P(5, g.AddText("xs y+14 w620", "CPU cores:"))
     Wiz.cpu := P(5, g.AddDropDownList("xs y+4 w620", ["Share every core between all clients (normal)"
         , "Give slot 1 cores of its own and higher priority (smoother main when the PC is busy)"
@@ -4075,9 +4217,17 @@ ShowWizard(*) {
     Wiz.fg2 := P(5, g.AddEdit("x+4 yp w60 Number", f2.fg))
     P(5, g.AddText("x+16 yp w100 h26 0x200", "background:"))
     Wiz.bg2 := P(5, g.AddEdit("x+4 yp w60 Number", f2.bg))
-    P(5, Hint(g.AddText("xs y+6 w620 cGray", "Lower background caps save power; keep them at 25 or more so /follow keeps up. Caps apply when a client starts.")))
-    P(5, g.AddText("xs y+16 w620", "Team commands (they use the in-game names from step 3):"))
-    P(5, Hint(g.AddText("xs y+4 w620 cGray", "Ctrl+Alt+F  everyone follows you      Ctrl+Alt+X  stop following      Ctrl+Alt+T  everyone assists you`nMore (follow in a line, attack, back off, sit, stand) on the toolbar's Team button.")))
+    P(5, Hint(g.AddText("xs y+6 w620 cGray", GameDef.eqIni
+        ? "Lower background caps save power; keep them at 25 or more so /follow keeps up. Caps apply when a client starts."
+        : "Set frame-rate limits in " GameDef.name "'s own options.")))
+    if !GameDef.eqIni
+        for c in [Wiz.fg1, Wiz.bg1, Wiz.fg2, Wiz.bg2]
+            c.Enabled := false
+    if GameDef.together {
+        P(5, g.AddText("xs y+16 w620", "Team commands (they use the in-game names from step 3):"))
+        P(5, Hint(g.AddText("xs y+4 w620 cGray", "Ctrl+Alt+F  everyone follows you      Ctrl+Alt+X  stop following      Ctrl+Alt+T  everyone assists you`nMore (follow in a line, attack, back off, sit, stand) on the toolbar's Team button.")))
+    } else
+        P(5, Hint(g.AddText("xs y+16 w620 cGray", "No team commands, broadcasting or mirror mode for " GameDef.name ": every character must be played by hand.")))
 
     ; ---- page 6: features ----
     P(6, g.AddText("xs ys w620", "Choose the features you want. You can change all of these later."))
@@ -4090,9 +4240,13 @@ ShowWizard(*) {
     Wiz.panel := P(6, g.AddCheckbox("xs y+6 w620", "Open the control panel when MMORPG Boxer starts"))
     Wiz.panel.Value := Cfg("General", "ShowPanelOnStart", "1") = "1"
     Wiz.loginArg := P(6, g.AddCheckbox("xs y+6 w620", "Fill in the account name at the login screen (Launch All)"))
-    Wiz.loginArg.Value := Cfg("Login", "UseLoginArg", "1") = "1"
+    Wiz.loginArg.Value := GameDef.loginArg && Cfg("Login", "UseLoginArg", "1") = "1"
+    if !GameDef.loginArg
+        Wiz.loginArg.Enabled := false
     P(6, g.AddText("xs y+14 w620", "Keys copied to every client when broadcast is on (Ctrl+Alt+B), separated by commas:"))
     Wiz.keys := P(6, g.AddEdit("xs y+4 w620", Cfg("Broadcast", "Keys", "1,2,3,4,5,6,7,8,9,0,-,=")))
+    if !GameDef.together
+        Wiz.keys.Enabled := false
     P(6, Hint(g.AddText("xs y+4 w620 cGray", "Default: the 12 hotbar keys 1-0, - and =.")))
     Wiz.tips := P(6, g.AddCheckbox("xs y+12 w620", "Show tooltips with keyboard shortcuts on buttons"))
     Wiz.tips.Value := TipsOn
@@ -4144,8 +4298,8 @@ WizShowPage(i) {
 
 WizGo(d) {
     i := Wiz.page
-    if (d > 0 && i = 1 && !FileExist(Trim(Wiz.path.Value) "\" EQExe)) {
-        if (MsgBox("eqgame.exe wasn't found in that folder. Continue anyway?", APP, "YesNo Icon! Owner" Wiz.g.Hwnd) != "Yes")
+    if (d > 0 && i = 1 && !GamePathOK(Wiz.path.Value)) {
+        if (MsgBox(GameDef.name " wasn't found in that folder. Continue anyway?", APP, "YesNo Icon! Owner" Wiz.g.Hwnd) != "Yes")
             return
     }
     if (d > 0 && i = 7)
@@ -4162,7 +4316,7 @@ WizResChange(ctrl, *) {
 
 WizBrowse(*) {
     Wiz.g.Opt("-AlwaysOnTop")                 ; so the folder picker isn't hidden behind it
-    dir := DirSelect("*" Trim(Wiz.path.Value), 0, "Choose the EverQuest folder (it contains eqgame.exe)")
+    dir := DirSelect("*" Trim(Wiz.path.Value), 0, "Choose the " GameDef.name " folder")
     Wiz.g.Opt("+AlwaysOnTop")
     if (dir != "") {
         Wiz.path.Value := dir
@@ -4171,8 +4325,8 @@ WizBrowse(*) {
 }
 
 WizCheckPath(*) {
-    ok := FileExist(Trim(Wiz.path.Value) "\" EQExe)
-    Wiz.pathInfo.Value := ok ? "Found " EQExe "." : "eqgame.exe not found in this folder."
+    ok := GamePathOK(Wiz.path.Value)
+    Wiz.pathInfo.Value := ok ? "Found " GameDef.name "." : GameDef.name " not found in this folder."
     Wiz.pathInfo.Opt(ok ? "c2E7D32" : "cB71C1C")
 }
 
@@ -4222,7 +4376,7 @@ WizRes(n, c, areaW, areaH) {
 
 WizSummary() {
     cnt := Integer(Wiz.count.Text)
-    t := "EverQuest folder:  " Trim(Wiz.path.Value) "`r`n"
+    t := GameDef.name " folder:  " Trim(Wiz.path.Value) "`r`n"
     t .= "Slots:  " cnt "`r`n"
     Loop cnt {
         r := Wiz.rows[A_Index]
@@ -4336,12 +4490,15 @@ BuildToolbar() {
         label := n (Chars[n] != "" ? " " SubStr(Chars[n], 1, 12) : "")
         TBAdd("slot" n, label, FocusSlot.Bind(n), "> " label)
     }
-    TBAdd("bc",      "Broadcast",  ToggleBroadcast, "Broadcast ON")
-    TBAdd("mirror",  "Mirror",     ToggleMirror, "Mirror ON")
+    if GameDef.together {
+        TBAdd("bc",      "Broadcast",  ToggleBroadcast, "Broadcast ON")
+        TBAdd("mirror",  "Mirror",     ToggleMirror, "Mirror ON")
+    }
     TBAdd("vfx",     "Views",      ToggleVFX, "Views ON")
     TBAdd("audio",   "Sound: All", ToggleAudio, "Sound: Active")
     TBAdd("views",   "Edit Views", ShowViews)
-    TBAdd("team",    "Team",       TeamMenu)
+    if GameDef.together
+        TBAdd("team",    "Team",       TeamMenu)
     TBAdd("arrange", "Arrange",    ManualArrange)
     TBAdd("layout",  "Layout",     ShowLayouts)
     TBAdd("launch",  "Launch All", LaunchAll)
@@ -4758,8 +4915,15 @@ BuildPanel() {
     global Panel, LV, SB, LayoutDDL, PEName, PEUser, PESlot, PEInfo, PERes
     Panel := Gui(, APP)
     Panel.SetFont("s10", "Segoe UI")
+    ; which game (each game keeps its own slots, layouts and settings)
+    Panel.AddText("xm w52 h28 0x200", "Game:")
+    gameDDL := Panel.AddDropDownList("x+4 yp w220", GameNames())
+    gameDDL.Choose(GAME = "EverQuest" ? 1 : 2)
+    gameDDL.OnEvent("Change", (c, *) => (SetGame(c.Text) = false ? c.Choose(GAME = "EverQuest" ? 1 : 2) : 0))
+    AddTip(gameDDL, "Each game keeps its own slots, layouts and settings. Switching restarts MMORPG Boxer.")
+    Hint(Panel.AddText("x+12 yp w336 h28 0x200 cGray", GameDef.together ? "Each game keeps its own setup." : "Boxing: 3-box server only, every character by hand."))
     ; 4 columns of buttons, each 150 wide with 8 between -> 624 wide
-    LV := Panel.AddListView("xm w624 r8 -Multi", ["Slot", "Character", "Account", "Resolution", "Status", "Window"])
+    LV := Panel.AddListView("xm y+8 w624 r8 -Multi", ["Slot", "Character", "Account", "Resolution", "Status", "Window"])
     LV.OnEvent("DoubleClick", PanelDoubleClick)
     LV.OnEvent("ItemSelect", PanelSelect)
     ; edit the selected slot's character name and account name right here
@@ -4768,24 +4932,37 @@ BuildPanel() {
     PEName := Panel.AddEdit("x+4 yp w150 h28")
     Panel.AddText("x+12 yp w100 h28 0x200", "Account name")
     PEUser := Panel.AddEdit("x+4 yp w150 h28")
+    if !GameDef.loginArg
+        PEUser.Enabled := false          ; this game logs in through its own launcher
     Panel.AddButton("x+10 yp w66 h28 Default", "Save").OnEvent("Click", PanelSave)
     Panel.AddText("xm+60 y+6 w74 h28 0x200", "Resolution")
     PERes := Panel.AddDropDownList("x+4 yp w150", ResolutionChoices())
     PERes.OnEvent("Change", PanelResChange)
     Hint(Panel.AddText("x+12 yp w300 h28 0x200 cGray", "game resolution / window size of this slot"))
-    PEInfo := Hint(Panel.AddText("xm y+6 w624 cGray", "Click a slot above, set its character, account name and resolution, then Save. Launch All pre-fills the account name at the EverQuest login screen."))
+    PEInfo := Hint(Panel.AddText("xm y+6 w624 cGray", GameDef.loginArg
+        ? "Click a slot above, set its character, account name and resolution, then Save. Launch All pre-fills the account name at the EverQuest login screen."
+        : "Click a slot above, set its character name and resolution, then Save. " GameDef.name " clients are started from its own launcher; each window goes into the next free slot."))
     ; buttons: fixed height so a long label can never wrap into the next row
     bw := "w150 h32"
     PB(opts, label, fn, tip) {
         b := Panel.AddButton(opts, label)
         b.OnEvent("Click", fn)
         AddTip(b, tip)
+        return b
     }
-    PB("xm y+12 " bw " Section", "Launch All", LaunchAll, TipText("Start every slot that has a character", "LaunchAll", "^!l"))
+    ; features this game's rules don't allow are greyed out
+    PBx(opts, label, fn, tip) {
+        b := PB(opts, label, fn, GameDef.together ? tip : "Not available for " GameDef.name ": every character must be played by hand.")
+        if !GameDef.together
+            b.Enabled := false
+    }
+    PB("xm y+12 " bw " Section", "Launch All", LaunchAll, TipText(GameDef.launchers.Length
+        ? "Open the " GameDef.name " launcher; start each character from it and MMORPG Boxer puts the windows in their slots"
+        : "Start every slot that has a character", "LaunchAll", "^!l"))
     PB("x+8 yp " bw, "Arrange", ManualArrange, TipText("Put every client back in its slot and make it redraw at its size (fixes a stretched picture)", "Arrange", "^!g"))
     PB("x+8 yp " bw, "Save Layout...", SaveLayout, TipText("Save where the clients are now as a new layout"))
-    PB("x+8 yp " bw, "Mirror On/Off", ToggleMirror, TipText("Clicks are repeated in every client", "ToggleMirror", "^!m"))
-    PB("xs y+8 " bw, "Broadcast On/Off", ToggleBroadcast, TipText("Keys you press are pressed in every client", "ToggleBroadcast", "^!b"))
+    PBx("x+8 yp " bw, "Mirror On/Off", ToggleMirror, TipText("Clicks are repeated in every client", "ToggleMirror", "^!m"))
+    PBx("xs y+8 " bw, "Broadcast On/Off", ToggleBroadcast, TipText("Keys you press are pressed in every client", "ToggleBroadcast", "^!b"))
     PB("x+8 yp " bw, "Views On/Off", ToggleVFX, TipText("Show or hide your clickable views", "ToggleVFX", "^!v"))
     PB("x+8 yp " bw, "Clickable Views...", ShowViews, TipText("Make, move, change and delete clickable views", "ViewManager", "^!e"))
     PB("x+8 yp " bw, "Characters...", ShowAccounts, TipText("Character and account names for each slot", "Accounts", "^!a"))
@@ -4794,7 +4971,7 @@ BuildPanel() {
     PB("x+8 yp " bw, "Edit Config", EditConfig, TipText("Open MMORPGBoxer.ini in Notepad"))
     PB("x+8 yp " bw, "Reload Config", (*) => Reload(), TipText("Restart MMORPG Boxer to apply changes made in MMORPGBoxer.ini", "ReloadConfig", "^!r"))
     PB("xs y+8 " bw, "Team && Performance...", ShowPerf, TipText("In-game names, follow/assist, CPU cores, frame-rate caps and per-character EverQuest settings"))
-    PB("x+8 yp " bw, "Team Commands...", TeamMenu, TipText("Follow me, stop following, assist me, attack, sit, stand", "FollowMe", "^!f"))
+    PBx("x+8 yp " bw, "Team Commands...", TeamMenu, TipText("Follow me, stop following, assist me, attack, sit, stand", "FollowMe", "^!f"))
     PB("x+8 yp " bw, "Diagnostics...", Diagnostics, TipText("Write a report of every window and the recent log (to send when something's wrong)"))
     PB("x+8 yp " bw, "Check for Updates", (*) => CheckForUpdates(false), TipText("Look for a newer version of MMORPG Boxer"))
     tipBox := Panel.AddCheckbox("xs y+8 w300 h28" (TipsOn ? " Checked" : ""), "Show tooltips with shortcuts")
@@ -4812,7 +4989,10 @@ BuildPanel() {
     LayoutDDL := Panel.AddText("x+4 yp w200 h32 0x200", Layout)       ; current layout's name
     PB("x+8 yp w130 h32", "Layouts...", ShowLayouts, TipText("See every layout with a picture and an explanation, and switch, save or delete layouts", "LayoutsWindow", ""))
     Panel.AddText("x+12 yp w120 h32 0x200", "Number of slots:")
-    ddl := Panel.AddDropDownList("x+4 yp+2 w56 Choose" MAX_SLOTS, ["1", "2", "3", "4", "5", "6", "7", "8"])
+    counts := []
+    Loop GameDef.maxSlots
+        counts.Push(String(A_Index))
+    ddl := Panel.AddDropDownList("x+4 yp+2 w56 Choose" MAX_SLOTS, counts)
     ddl.OnEvent("Change", SetSlotCount)
     Hint(Panel.AddText("xs y+10 w624 h24 0x200 cGray", "Version " APP_VERSION ".  Double-click a slot to switch to it. Changing the number of slots saves and reloads."))
     Panel.AddText("xm y+6 w624 h1 0x10")                 ; separator line

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.0
+- **Monsters & Memories support.** Choose the game in the control panel or the Setup Wizard; each game keeps its own slots, layouts and settings (Monsters & Memories uses MMORPGBoxer-MonstersAndMemories.ini).
+- Following Monsters & Memories' rules (boxing only on its 3-box server, every character played by hand), its setup allows at most 3 slots and leaves out broadcasting, mirror mode, the mirrored click, team commands and key maps. Layouts, slot switching, clickable views, sound from the active client, CPU settings, the toolbar and the control panel work as usual.
+- Launch All opens the Monsters & Memories launcher; each client window goes into the next free slot as it opens.
+
 ## 1.6.2
 - Fix (dark mode): the selected layout in the Layouts window and the Setup Wizard was a white bar with white text. Those lists now use the same blue selection as the other lists.
 - Fix (dark mode): column headings in lists (Slot, Character, Account...) were dark grey on dark grey. They're light now.

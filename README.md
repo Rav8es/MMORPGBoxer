@@ -1,6 +1,6 @@
 # MMORPG Boxer
 
-A multiboxing tool for **EverQuest Live** on Windows. It runs on AutoHotkey v2 and is configured with a single INI file.
+A multiboxing tool for **EverQuest Live** and **Monsters & Memories** on Windows. It runs on AutoHotkey v2 and is configured with an INI file per game.
 
 It helps you run several EverQuest clients at once:
 - Launch them and lay them out in a grid on screen.
@@ -77,6 +77,18 @@ The **Setup Wizard** opens by itself the first time you start MMORPG Boxer. Open
 7. **Finish:** a summary of everything. Click **Finish** to save, and MMORPG Boxer restarts with your settings.
 
 **Cancel** closes the wizard without saving and stops it opening by itself. You'll still need to do the scaling step in 3.1 yourself, since the wizard can't change Windows settings for EverQuest.
+
+### 3.0a Choosing the game
+Pick the game in the **Game** box at the top of the control panel or on the first page of the Setup Wizard. Each game keeps its own slots, layouts and settings: EverQuest uses `MMORPGBoxer.ini`, Monsters & Memories uses `MMORPGBoxer-MonstersAndMemories.ini`. Switching restarts MMORPG Boxer; the first time you switch to a game, its Setup Wizard opens.
+
+**Monsters & Memories** allows boxing only on its 3-box server (Nunavoth), and every character must be played by hand. So for Monsters & Memories, MMORPG Boxer:
+- allows at most **3 slots**;
+- leaves out **broadcasting, mirror mode, the mirrored click (mouse button 4), team commands and key maps** (their buttons are greyed out and their hotkeys do nothing), because each of those makes one key press or click act in several clients;
+- keeps **layouts, slot switching, clickable views, sound from the active client, CPU settings, the toolbar and the control panel**. A clickable view clicks one button in one client per click;
+- doesn't start the clients itself: **Launch All opens the Monsters & Memories launcher**. Start each character from the launcher; MMORPG Boxer puts each window into the next free slot as it opens (Ctrl+Alt+F1–F3 moves a client to another slot);
+- doesn't use EverQuest's eqclient.ini features (per-character settings files, frame-rate caps, the login name). Set frame-rate limits and the window mode in the game's own options, and play in **windowed** mode (Alt+Enter switches between windowed and windowed fullscreen).
+
+Monsters & Memories support is new: if a client keeps jumping back to its own size when MMORPG Boxer arranges it, set the game's windowed resolution to the slot's size, and send MMORPGBoxer.log.
 
 ### 3.1 Turn off Windows scaling for EverQuest (required on 4K)
 1. Close all EverQuest clients.

@@ -276,6 +276,7 @@ Section "Uninstall"
   RMDir /r "$INSTDIR\AutoHotkey"
   ${If} $1 == "delete"
     Delete "$INSTDIR\MMORPGBoxer.ini"
+    Delete "$INSTDIR\MMORPGBoxer-*.ini"
     Delete "$INSTDIR\MMORPGBoxer.log"
     Delete "$INSTDIR\MMORPGBoxer-diagnostics.txt"
   ${EndIf}
