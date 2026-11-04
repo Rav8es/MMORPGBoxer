@@ -162,6 +162,7 @@ The panel opens automatically when MMORPG Boxer starts (turn this off with `Show
 - **Layout dropdown:** choose Grid, Swap, a preset, or your own saved layout.
 - **Buttons:** Launch All, Arrange, Save Layout..., Mirror On/Off, Broadcast On/Off, Views On/Off, Clickable Views..., Characters..., Show/Hide Toolbar, Setup Wizard..., Edit Config, Reload Config, Diagnostics..., Check for Updates.
 - **Show tooltips with shortcuts:** turns the button tooltips on or off.
+- **Appearance:** **System** (follows Windows' light or dark app mode, and switches when Windows does), **Light** or **Dark**. It applies to the control panel, every other window of the app, and its menus. The toolbar keeps its own colours (its **Bar** menu). `Appearance` in `[General]`.
 - **Number of slots:** choose 1–8. The app saves the setting and reloads.
 - **Status bar:** shows the layout, broadcast state, views state and client count.
 
@@ -568,6 +569,7 @@ Keep comments on their own lines. A `;` after a value becomes part of the value.
 | UseWorkArea | `1` | Fit layouts above the taskbar (1) or use the whole screen (0) |
 | ShowPanelOnStart | `1` | Open the control panel when MMORPG Boxer starts |
 | ShowTooltips | `1` | Show what each button does and its shortcut when you point at it |
+| Appearance | `System` | `System` (follow Windows' app mode), `Light` or `Dark` |
 | RunAsAdmin | `1` | Restart MMORPG Boxer as administrator (needed when EverQuest runs as admin) |
 
 ### [Characters]

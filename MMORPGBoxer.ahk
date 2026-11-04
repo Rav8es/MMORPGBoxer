@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "MMORPG Boxer"
-global APP_VERSION := "1.4.0"
+global APP_VERSION := "1.5.0"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/MMORPGBoxer"
 global OLD_UPDATE_REPO := "Rav8es/BoxerPro"     ; its name before the rename
@@ -179,6 +179,10 @@ global IniStamp := ""         ; eqclient.ini's time/size when we last wrote or s
 global LastClosed := {n: 0, t: 0}   ; the slot whose client closed most recently
 global CpuDone := Map()       ; id -> CPU settings applied to that client
 global PF := 0                ; Team & Performance window
+global Appearance := Cfg("General", "Appearance", "System")   ; System | Light | Dark
+global Hints := Map()         ; control hwnd -> grey hint text
+global NoTheme := Map()       ; control hwnd -> keeps its own colours
+global ThemedGuis := []       ; windows that follow the appearance setting
 
 ; ------------------------------ Hotkeys -------------------------------
 ; App hotkeys first (they take priority over broadcast hotkeys on the same key).
@@ -240,6 +244,8 @@ OnMessage(0x201, VfxMouse)   ; WM_LBUTTONDOWN on a view
 OnMessage(0x204, VfxMouse)   ; WM_RBUTTONDOWN on a view
 OnMessage(0x201, ToolbarLButton)   ; drag the toolbar
 OnMessage(0x200, TipMouseMove)     ; WM_MOUSEMOVE: tooltips on buttons
+OnMessage(0x1A, OnSettingChange)   ; WM_SETTINGCHANGE: Windows light/dark mode
+ApplyMenuTheme()
 OnMessage(0x232, ToolbarMoved)     ; WM_EXITSIZEMOVE: save toolbar position
 
 ; ------------------------------ Tray menu -----------------------------
@@ -872,7 +878,7 @@ ShowPerf(*) {
         PF.bg := g.AddEdit("x+4 yp w56 Number")
         AddTip(PF.bg, "Frame-rate cap while this client is in the background (blank = leave EverQuest's setting).`nEverQuest needs about 25 or more for /follow to keep up.")
         PBtn("xm+76 y+12 w150 h30", "Save", (*) => PerfSave(), "Save this slot's settings and apply the CPU settings now")
-        g.AddText("x+12 yp w450 h30 0x200 cGray", "Frame-rate caps apply the next time this client starts.")
+        Hint(g.AddText("x+12 yp w450 h30 0x200 cGray", "Frame-rate caps apply the next time this client starts."))
         PF.prof := g.AddCheckbox("xm y+22 w440" (ProfilesOn ? " Checked" : ""), "Separate EverQuest settings file for each character")
         PF.prof.OnEvent("Click", PerfProfiles)
         AddTip(PF.prof, "Each character keeps its own eqclient.ini (graphics, window, frame-rate caps) in the Profiles folder.`nAlso stops a client picking up another slot's resolution when you log out.")
@@ -884,9 +890,10 @@ ShowPerf(*) {
         PF.stop := g.AddEdit("x+4 yp w120", Cfg("Team", "StopFollowKey", "Down"))
         PF.stop.OnEvent("Change", (c, *) => IniWrite(Trim(c.Value), CFG_FILE, "Team", "StopFollowKey"))
         AddTip(PF.stop, "The key that walks backwards in EverQuest (pressing it breaks /follow). AutoHotkey key name, e.g. Down or s.")
-        g.AddText("xm y+12 w700 cGray", "Follow and assist type EverQuest's own commands (/target, /follow, /assist, /attack) into each other client in turn, the same way broadcast reaches them.")
+        Hint(g.AddText("xm y+12 w700 cGray", "Follow and assist type EverQuest's own commands (/target, /follow, /assist, /attack) into each other client in turn, the same way broadcast reaches them."))
         g.OnEvent("Close", (*) => g.Hide())
         g.OnEvent("Escape", (*) => g.Hide())
+        ThemeGui(g)
     }
     PF.gui.Show()
     PerfRefresh()
@@ -1236,13 +1243,14 @@ ShowUpdatePrompt(ver, notes, exeUrl, shaUrl) {
     g.SetFont("s12 w600")
     g.AddText("w560", APP " " ver " is available")
     g.SetFont("s10 w400")
-    g.AddText("w560 cGray", "You have version " APP_VERSION ". Updating closes MMORPG Boxer, installs the new version and starts it again. Your settings are kept.")
+    Hint(g.AddText("w560 cGray", "You have version " APP_VERSION ". Updating closes MMORPG Boxer, installs the new version and starts it again. Your settings are kept."))
     g.AddText("w560 y+12", "What's new:")
     g.AddEdit("w560 r12 ReadOnly", notes != "" ? notes : "(no notes)")
     g.AddButton("w180 h32 Default", "Update now").OnEvent("Click", (*) => (g.Destroy(), InstallUpdate(ver, exeUrl, shaUrl)))
     g.AddButton("x+10 yp w180 h32", "Later").OnEvent("Click", (*) => g.Destroy())
     g.AddButton("x+10 yp w180 h32", "Skip this version").OnEvent("Click"
         , (*) => (IniWrite(ver, CFG_FILE, "Update", "SkipVersion"), g.Destroy()))
+    ThemeGui(g)
     g.Show()
 }
 
@@ -1318,12 +1326,13 @@ ShowAccounts(*) {
         AccName := AccGui.AddEdit("xm w320")
         AccGui.AddText("xm y+10", "Account name (pre-filled at the EverQuest login screen):")
         AccUser := AccGui.AddEdit("xm w320")
-        AccInfo := AccGui.AddText("xm w320 cGray", "")
+        AccInfo := Hint(AccGui.AddText("xm w320 cGray", ""))
         AccGui.AddButton("xm w100 Default", "Save").OnEvent("Click", (*) => AccSave())
         AccGui.AddButton("x+10 w100", "Close").OnEvent("Click", (*) => AccGui.Hide())
-        AccGui.AddText("xm w320 cGray y+12"
-            , "Launch All starts each client with its username already in the login box. You type the password. An empty name means Launch All skips that slot.")
+        Hint(AccGui.AddText("xm w320 cGray y+12"
+            , "Launch All starts each client with its username already in the login box. You type the password. An empty name means Launch All skips that slot."))
         AccGui.OnEvent("Close", (*) => AccGui.Hide())
+        ThemeGui(AccGui)
     }
     n := SlotOf(WinActive(EQ))
     AccFillSlots(n ? n : 1)
@@ -3141,7 +3150,7 @@ ShowViews(*) {
         g := Gui(, APP " - Clickable Views")
         g.SetFont("s10", "Segoe UI")
         VM := {gui: g}
-        g.AddText("xm w640 cGray", "A view is a live copy of part of one client - for example slot 2's hotbar - that you can put anywhere on screen. Clicking a button in the view clicks the real button in that client.")
+        Hint(g.AddText("xm w640 cGray", "A view is a live copy of part of one client - for example slot 2's hotbar - that you can put anywhere on screen. Clicking a button in the view clicks the real button in that client."))
         VM.list := g.AddListView("xm y+8 w640 r8 -Multi", ["View", "Copies from", "Area copied", "Shown at", "Opacity"])
         VM.list.OnEvent("ItemSelect", VMSelect)
         VM.list.OnEvent("DoubleClick", (*) => VMRename())
@@ -3173,7 +3182,7 @@ ShowViews(*) {
         VM.op := g.AddSlider("x+4 yp w170 Range20-100 TickInterval10 ToolTip", 100)
         VM.op.OnEvent("Change", VMOpacityChange)
         AddTip(VM.op, TipText("How see-through the selected view is"))
-        VM.info := g.AddText("xm+12 y+10 w616 cGray", "")
+        VM.info := Hint(g.AddText("xm+12 y+10 w616 cGray", ""))
         VM.show := g.AddCheckbox("xm y+22 w300", "Show views")
         VM.show.OnEvent("Click", VMShowChange)
         AddTip(VM.show, TipText("Show or hide every view", "ToggleVFX", "^!v"))
@@ -3185,9 +3194,10 @@ ShowViews(*) {
             , "Send - click in the background (EverQuest may ignore it)", "Focus - just switch to that client"])
         VM.mode.OnEvent("Change", (c, *) => IniWrite(StrSplit(c.Text, " ")[1], CFG_FILE, "VFX", "ClickMode"))
         AddTip(VM.mode, TipText("What happens when you click a view"))
-        VM.status := g.AddText("xm y+12 w640 cGray", "Tip: views need the client they copy from to be running and not minimized.")
+        VM.status := Hint(g.AddText("xm y+12 w640 cGray", "Tip: views need the client they copy from to be running and not minimized."))
         g.OnEvent("Close", (*) => g.Hide())
         g.OnEvent("Escape", (*) => g.Hide())
+        ThemeGui(g)
     }
     VM.gui.Show()
     VMRefresh()
@@ -3391,6 +3401,147 @@ VMShowChange(ctrl, *) {
     Status("Views " (VFXOn ? "ON" : "OFF"))
 }
 
+; ----------------------------- Appearance -----------------------------
+; Light, Dark, or System (follows Windows: Settings > Personalization >
+; Colors > "Choose your app mode"). Applies to the app's windows and menus;
+; the toolbar keeps its own colours (Bar menu).
+Hint(ctrl) {
+    Hints[ctrl.Hwnd] := true
+    return ctrl
+}
+
+Keep(ctrl) {
+    NoTheme[ctrl.Hwnd] := true
+    return ctrl
+}
+
+IsDark() {
+    if (Appearance = "Dark")
+        return true
+    if (Appearance = "Light")
+        return false
+    try return RegRead("HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme") = 0
+    return false
+}
+
+Palette() {
+    if IsDark()
+        return {dark: true, bg: "202020", fg: "E6E6E6", hint: "9C9C9C", field: "2C2C2C"}
+    return {dark: false, bg: "Default", fg: "Default", hint: "Gray", field: "Default"}
+}
+
+; app = theme name, "" = Windows' default, "none" = no visual styles
+SetCtlTheme(hwnd, app) {
+    if (app = "")
+        DllCall("uxtheme\SetWindowTheme", "Ptr", hwnd, "Ptr", 0, "Ptr", 0)
+    else if (app = "none")
+        DllCall("uxtheme\SetWindowTheme", "Ptr", hwnd, "Str", "", "Str", "")
+    else
+        DllCall("uxtheme\SetWindowTheme", "Ptr", hwnd, "Str", app, "Ptr", 0)
+}
+
+; Dark or light menus (tray menu, toolbar menus) for this program.
+ApplyMenuTheme() {
+    static setMode := 0, flush := 0
+    if !setMode {
+        h := DllCall("GetModuleHandle", "Str", "uxtheme", "Ptr")
+        if !h
+            h := DllCall("LoadLibrary", "Str", "uxtheme", "Ptr")
+        setMode := DllCall("GetProcAddress", "Ptr", h, "Ptr", 135, "Ptr")   ; SetPreferredAppMode
+        flush := DllCall("GetProcAddress", "Ptr", h, "Ptr", 136, "Ptr")     ; FlushMenuThemes
+    }
+    try {
+        if setMode
+            DllCall(setMode, "Int", Appearance = "Dark" ? 2 : Appearance = "Light" ? 3 : 1)
+        if flush
+            DllCall(flush)
+    }
+}
+
+RGBtoBGR(hex) {
+    v := Integer("0x" hex)
+    return ((v & 0xFF) << 16) | (v & 0xFF00) | ((v >> 16) & 0xFF)
+}
+
+ThemeCtrl(c, p) {
+    if NoTheme.Has(c.Hwnd)
+        return
+    fg := Hints.Has(c.Hwnd) ? p.hint : p.fg
+    switch c.Type, false {
+        case "Text", "Link":
+            c.SetFont("c" fg)
+            c.Opt("+Background" p.bg)
+        case "Button":
+            SetCtlTheme(c.Hwnd, p.dark ? "DarkMode_Explorer" : "")
+        case "Checkbox", "Radio", "GroupBox":
+            ; themed check boxes ignore the text colour, so plain style in dark
+            SetCtlTheme(c.Hwnd, p.dark ? "none" : "")
+            c.SetFont("c" fg)
+            c.Opt("+Background" p.bg)
+        case "Edit", "DDL", "ComboBox", "ListBox":
+            SetCtlTheme(c.Hwnd, p.dark ? "DarkMode_CFD" : "")
+            c.SetFont("c" fg)
+            c.Opt("+Background" p.field)
+        case "Slider", "UpDown":
+            SetCtlTheme(c.Hwnd, p.dark ? "DarkMode_Explorer" : "")
+            c.Opt("+Background" p.bg)
+        case "ListView":
+            SetCtlTheme(c.Hwnd, p.dark ? "DarkMode_Explorer" : "")
+            hdr := SendMessage(0x101F, 0, 0, c)                          ; LVM_GETHEADER
+            if hdr
+                SetCtlTheme(hdr, p.dark ? "DarkMode_ItemsView" : "")
+            bk := p.dark ? RGBtoBGR(p.field) : DllCall("GetSysColor", "Int", 5, "UInt")
+            tx := p.dark ? RGBtoBGR(p.fg) : DllCall("GetSysColor", "Int", 8, "UInt")
+            SendMessage(0x1001, 0, bk, c)                                 ; LVM_SETBKCOLOR
+            SendMessage(0x1026, 0, bk, c)                                 ; LVM_SETTEXTBKCOLOR
+            SendMessage(0x1024, 0, tx, c)                                 ; LVM_SETTEXTCOLOR
+    }
+}
+
+; Style one window (and remember it, so it follows later changes).
+ThemeGui(g) {
+    if !HasVal(ThemedGuis, g)
+        ThemedGuis.Push(g)
+    p := Palette()
+    try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", g.Hwnd, "UInt", 20, "Int*", p.dark ? 1 : 0, "UInt", 4)  ; dark title bar
+    g.BackColor := p.bg
+    for hwnd, c in g
+        try ThemeCtrl(c, p)
+    DllCall("RedrawWindow", "Ptr", g.Hwnd, "Ptr", 0, "Ptr", 0, "UInt", 0x0585)   ; INVALIDATE|ERASE|FRAME|ALLCHILDREN|UPDATENOW
+}
+
+ApplyAppearance() {
+    ApplyMenuTheme()
+    alive := []
+    for g in ThemedGuis {
+        try {
+            if !WinExist("ahk_id " g.Hwnd)
+                continue
+            alive.Push(g)
+            ThemeGui(g)
+        }
+    }
+    ThemedGuis.Length := 0
+    for g in alive
+        ThemedGuis.Push(g)
+}
+
+SetAppearance(mode, *) {
+    global Appearance
+    Appearance := mode
+    IniWrite(mode, CFG_FILE, "General", "Appearance")
+    ApplyAppearance()
+    Status("Appearance: " mode (mode = "System" ? " (" (IsDark() ? "dark" : "light") " right now)" : ""))
+}
+
+; Windows told us a setting changed: follow its light/dark app mode.
+OnSettingChange(wParam, lParam, msg, hwnd) {
+    if (Appearance != "System" || !lParam)
+        return
+    try if (StrGet(lParam) = "ImmersiveColorSet")
+        SetTimer(ApplyAppearance, -300)
+}
+
 ; ------------------------------ Tooltips ------------------------------
 ; Hovering a button shows what it does and its keyboard shortcut.
 ; [General] ShowTooltips=0 (or the control panel checkbox) turns them off.
@@ -3588,7 +3739,7 @@ ShowWizard(*) {
     g.SetFont("s15 w600")
     Wiz.title := g.AddText("xm w620 h34", "")
     g.SetFont("s10 w400")
-    Wiz.step := g.AddText("xm w620 cGray", "")
+    Wiz.step := Hint(g.AddText("xm w620 cGray", ""))
     anchor := g.AddText("xm y+10 w1 h1 Section")
     P(i, ctrl) {
         Wiz.pages[i].Push(ctrl)
@@ -3633,16 +3784,16 @@ ShowWizard(*) {
     Wiz.layout := P(4, g.AddDropDownList("xs y+8 w300", LayoutNames()))
     try Wiz.layout.Text := Layout
     Wiz.layout.OnEvent("Change", (*) => WizPreview())
-    Wiz.box := P(4, g.AddText("xs y+10 w384 h216 Border Background101010"))
+    Wiz.box := P(4, Keep(g.AddText("xs y+10 w384 h216 Border Background101010")))
     colours := ["2E5A88", "2E7D32", "8E3B3B", "6A4C93", "B8860B", "00695C", "5D4037", "455A64"]
     Loop 8
-        Wiz.rects.Push(P(4, g.AddText("xs ys w10 h10 Center 0x200 Border cFFFFFF Background" colours[A_Index], A_Index)))
-    Wiz.note := P(4, g.AddText("x+0 yp w10 cGray", ""))
+        Wiz.rects.Push(P(4, Keep(g.AddText("xs ys w10 h10 Center 0x200 Border cFFFFFF Background" colours[A_Index], A_Index))))
+    Wiz.note := P(4, Hint(g.AddText("x+0 yp w10 cGray", "")))
     Wiz.work := P(4, g.AddCheckbox("xs w620", "Keep windows above the taskbar"))
     Wiz.work.Value := UseWorkArea
     Wiz.borders := P(4, g.AddCheckbox("xs y+4 w620", "Remove window borders (clients sit edge to edge)"))
     Wiz.borders.Value := HideBorders
-    P(4, g.AddText("xs y+4 w620 cGray", "Tip: after changing layout, close and relaunch your clients so they start at the new size."))
+    P(4, Hint(g.AddText("xs y+4 w620 cGray", "Tip: after changing layout, close and relaunch your clients so they start at the new size.")))
 
     ; ---- page 5: features ----
     P(5, g.AddText("xs ys w620", "Choose the features you want. You can change all of these later."))
@@ -3658,7 +3809,7 @@ ShowWizard(*) {
     Wiz.loginArg.Value := Cfg("Login", "UseLoginArg", "1") = "1"
     P(5, g.AddText("xs y+14 w620", "Keys copied to every client when broadcast is on (Ctrl+Alt+B), separated by commas:"))
     Wiz.keys := P(5, g.AddEdit("xs y+4 w620", Cfg("Broadcast", "Keys", "1,2,3,4,5,6,7,8,9,0,-,=")))
-    P(5, g.AddText("xs y+4 w620 cGray", "Default: the 12 hotbar keys 1-0, - and =."))
+    P(5, Hint(g.AddText("xs y+4 w620 cGray", "Default: the 12 hotbar keys 1-0, - and =.")))
 
     ; ---- page 6: summary ----
     P(6, g.AddText("xs ys w620", "Ready to save. Check the summary below, then click Finish. MMORPG Boxer will restart with your settings."))
@@ -3673,6 +3824,7 @@ ShowWizard(*) {
     g.AddButton("x+284 yp w110 h32", "Cancel").OnEvent("Click", WizCancel)
     WizCheckPath()
     WizShowPage(1)
+    ThemeGui(g)
     g.Show()
 }
 
@@ -4277,7 +4429,7 @@ Status(msg, ms := 2500) {
             SetTimer(() => ToolTip(, , , 1), -ms)
     }
     if SB
-        try SB.SetText("  " msg)
+        try SB.Value := "  " msg
 }
 
 UpdateIndicator() {
@@ -4314,8 +4466,8 @@ BuildPanel() {
     Panel.AddText("xm+60 y+6 w74 h28 0x200", "Resolution")
     PERes := Panel.AddDropDownList("x+4 yp w150", ResolutionChoices())
     PERes.OnEvent("Change", PanelResChange)
-    Panel.AddText("x+12 yp w300 h28 0x200 cGray", "game resolution / window size of this slot")
-    PEInfo := Panel.AddText("xm y+6 w624 cGray", "Click a slot above, set its character, account name and resolution, then Save. Launch All pre-fills the account name at the EverQuest login screen.")
+    Hint(Panel.AddText("x+12 yp w300 h28 0x200 cGray", "game resolution / window size of this slot"))
+    PEInfo := Hint(Panel.AddText("xm y+6 w624 cGray", "Click a slot above, set its character, account name and resolution, then Save. Launch All pre-fills the account name at the EverQuest login screen."))
     ; buttons: fixed height so a long label can never wrap into the next row
     bw := "w150 h32"
     PB(opts, label, fn, tip) {
@@ -4341,6 +4493,13 @@ BuildPanel() {
     PB("x+8 yp " bw, "Check for Updates", (*) => CheckForUpdates(false), TipText("Look for a newer version of MMORPG Boxer"))
     tipBox := Panel.AddCheckbox("xs y+8 w300 h28" (TipsOn ? " Checked" : ""), "Show tooltips with shortcuts")
     tipBox.OnEvent("Click", SetTipsOn)
+    Panel.AddText("x+16 yp w96 h28 0x200", "Appearance:")
+    look := Panel.AddDropDownList("x+4 yp w120", ["System", "Light", "Dark"])
+    try look.Text := Appearance
+    catch
+        look.Choose(1)
+    look.OnEvent("Change", (c, *) => SetAppearance(c.Text))
+    AddTip(look, "System follows Windows' light or dark app mode (Settings > Personalization > Colors)")
     AddTip(tipBox, "Show what each button does and its keyboard shortcut when you point at it")
     ; layout and slot count on their own row
     Panel.AddText("xs y+14 w60 h28 0x200", "Layout:")
@@ -4350,9 +4509,11 @@ BuildPanel() {
     Panel.AddText("x+20 yp w120 h28 0x200", "Number of slots:")
     ddl := Panel.AddDropDownList("x+4 yp w56 Choose" MAX_SLOTS, ["1", "2", "3", "4", "5", "6", "7", "8"])
     ddl.OnEvent("Change", SetSlotCount)
-    Panel.AddText("xs y+10 w624 h24 0x200 cGray", "Version " APP_VERSION ".  Double-click a slot to switch to it. Changing the number of slots saves and reloads.")
-    SB := Panel.AddStatusBar()
+    Hint(Panel.AddText("xs y+10 w624 h24 0x200 cGray", "Version " APP_VERSION ".  Double-click a slot to switch to it. Changing the number of slots saves and reloads."))
+    Panel.AddText("xm y+6 w624 h1 0x10")                 ; separator line
+    SB := Panel.AddText("xm y+4 w624 h22 0x200", "")      ; status line
     Panel.OnEvent("Close", (*) => Panel.Hide())
+    ThemeGui(Panel)
 }
 
 SetSlotCount(ctrl, *) {
@@ -4456,7 +4617,7 @@ RefreshPanel() {
     if (PanelSel >= 1 && PanelSel <= MAX_SLOTS)
         LV.Modify(PanelSel, "Select Focus")
     LV.Opt("+Redraw")
-    SB.SetText(Format("  Layout: {}    Broadcast: {}    Mirror: {}    Views: {}    Clients: {}"
+    SB.Value := (Format("  Layout: {}    Broadcast: {}    Mirror: {}    Views: {}    Clients: {}"
         , Layout, Broadcasting ? "ON" : "off", Mirroring ? "ON" : "off", VFXOn ? "ON" : "off", CountClients()))
 }
 
@@ -4490,6 +4651,8 @@ LaunchDelay=12000
 Slots=4
 ; Show what each button does and its shortcut when you point at it (1/0)
 ShowTooltips=1
+; System (follow Windows' light/dark app mode), Light or Dark
+Appearance=System
 ; Monitor to place the clients on
 Monitor=1
 ; Grid, Swap, or a preset: Top + 2 Bottom, Top + 3 Bottom, Left + 2 Right,

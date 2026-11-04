@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.0
+- **Dark mode:** a new **Appearance** setting in the control panel: **System** (follows Windows' light or dark app mode, and changes when Windows does), **Light** or **Dark**. It covers the control panel, the Clickable Views, Team & Performance, Characters, Setup Wizard and update windows, their title bars, and the app's menus.
+- The control panel's status bar is now a status line, so it's readable in both modes.
+
 ## 1.4.0
 - **Separate EverQuest settings for each character:** each character keeps its own eqclient.ini and eqlsPlayerData.ini in a Profiles folder. They're put in place before the client starts, and while you play eqclient.ini holds the settings of the client you're in. A client that logs out now gets its own resolution back instead of another slot's. On by default; the original eqclient.ini is backed up to Profiles\_original.
 - **CPU cores and priority per slot,** applied to running clients straight away. **Auto-assign CPU Cores** gives your main slot cores of its own.
