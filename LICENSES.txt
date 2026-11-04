@@ -1,0 +1,23 @@
+EQ Boxer Pro - third-party software
+===================================
+
+AutoHotkey v2.0.31
+------------------
+EQ Boxer Pro is an AutoHotkey v2 script. This package includes an unmodified
+copy of AutoHotkey v2.0.31 (folder "AutoHotkey"), including AutoHotkey Dash,
+taken from the official release:
+  https://github.com/AutoHotkey/AutoHotkey/releases/tag/v2.0.31
+
+AutoHotkey is free software, licensed under the GNU General Public License
+version 2. The full licence text is in AutoHotkey\license.txt.
+The complete corresponding source code is available at:
+  https://github.com/AutoHotkey/AutoHotkey/tree/v2.0.31
+AutoHotkey website: https://www.autohotkey.com
+
+NSIS
+----
+The installer was built with NSIS (Nullsoft Scriptable Install System),
+https://nsis.sourceforge.io - zlib/libpng licence.
+
+EverQuest is a trademark of its owner. EQ Boxer Pro is an independent fan-made
+tool and is not affiliated with or endorsed by Daybreak Game Company.
