@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.3
+- Fix: a client's title bar showed while it was loading (for example slot 2's title bar across the bottom of slot 1 during Launch All). It's now hidden as soon as the window appears, without moving or resizing it.
+- The clip now follows a client when EverQuest resizes or redraws its window, instead of counting that as the clip being lost.
+- Ctrl+Alt+U (Restore borders) now keeps the borders visible until the next Arrange; before, they were hidden again within a second.
+
 ## 1.1.2
 - Fix: "Check for Updates" said updates weren't set up on new installs. The empty `Repo=` line in a freshly created EQBoxer.ini now means "use the built-in repository".
 

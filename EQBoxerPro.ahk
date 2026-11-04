@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "EQ Boxer Pro"
-global APP_VERSION := "1.1.2"
+global APP_VERSION := "1.1.3"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/BoxerPro"
 ; installed copies ship an icon next to the script
@@ -137,6 +137,7 @@ global Fixes := Map()        ; id -> [tick, ...]    recent auto-corrections
 global ArrangedAt := Map()   ; id -> when it was last arranged
 global ClipFor := Map()      ; id -> picture area the window is clipped to
 global StripFallback := Map() ; id -> true: clip didn't hold, remove title bar instead
+global KeepFrame := Map()     ; id -> true: "Restore borders" - leave its frame visible until the next Arrange
 global Placed := Map()       ; id -> true once a client has been arranged
 global Unmanaged := Map()    ; id -> true           clients we stopped fighting
 global KeyMaps := []
@@ -1015,30 +1016,63 @@ RegionKey(id) {
 ClipIsRight(id) => (RegionKey(id) = ClipKey(id))
 
 ClipToPicture(id) {
+    static failLogged := Map()
+    if KeepFrame.Has(id)
+        return false
     try {
         key := ClipKey(id)
         p := StrSplit(key, ",")
+        if (p[3] < 64 || p[4] < 64)                ; no real picture yet: an empty clip would hide the window
+            return false
         rgn := DllCall("CreateRectRgn", "Int", p[1], "Int", p[2], "Int", p[1] + p[3], "Int", p[2] + p[4], "Ptr")
         ok := DllCall("SetWindowRgn", "Ptr", id, "Ptr", rgn, "Int", 1)    ; Windows owns rgn now
+        err := A_LastError
         ClipFor[id] := key
-        if (!ok || !ClipIsRight(id))
-            WriteLog("slot " SlotOf(id) ": clipping to the picture did not take effect (SetWindowRgn=" ok ", error " A_LastError ") - " WinDesc(id))
+        if (ok && ClipIsRight(id))
+            return true
+        if (!failLogged.Has(id) || A_TickCount - failLogged[id] > 10000) {
+            failLogged[id] := A_TickCount
+            WriteLog("slot " SlotOf(id) ": clipping to the picture did not take effect (SetWindowRgn=" ok ", error " err ") - " WinDesc(id))
+        }
     }
+    return false
 }
 
-; Watches clipped clients several times a second and puts the clip back if
-; it has gone (EverQuest or Windows may drop it). If a client keeps losing
-; it, that client is switched to removing its title bar instead.
+; Hides the title bar of every client several times a second:
+; - a client that has just started is clipped straight away, so its title
+;   bar never shows while it loads (clipping doesn't move or resize it, so
+;   EverQuest doesn't react to it);
+; - when a client changes size or its frame changes, the clip follows it;
+; - if the clip disappears it's put back. If an arranged client keeps losing
+;   it, that client is switched to removing its title bar instead.
 ClipGuard() {
-    static drops := Map()
+    static drops := Map(), noted := Map()
     if (!HideBorders || BorderMode() != "Clip" || Switching)
         return
     for n, id in Slots {
-        if (!id || !ClipFor.Has(id) || StripFallback.Has(id))
+        if (!id || StripFallback.Has(id) || KeepFrame.Has(id))
             continue
         try {
-            if ClipIsRight(id)
+            if (WinGetMinMax("ahk_id " id) = -1)          ; minimized
                 continue
+            have := RegionKey(id)
+            if (have = ClipKey(id))
+                continue
+            if (!ClipFor.Has(id)) {
+                if ClipToPicture(id)
+                    WriteLog("slot " n ": title bar hidden as soon as the client appeared - " WinDesc(id))
+                continue
+            }
+            if (have != "" || !Placed.Has(id)) {
+                ; still clipped but the window changed (EverQuest resized it
+                ; or redrew its frame), or the client is still starting up
+                ClipToPicture(id)
+                if (!noted.Has(id) || A_TickCount - noted[id] > 5000) {
+                    noted[id] := A_TickCount
+                    WriteLog("slot " n ": window changed - clip follows it - " WinDesc(id))
+                }
+                continue
+            }
             now := A_TickCount
             if !drops.Has(id)
                 drops[id] := []
@@ -1073,7 +1107,7 @@ PlaceClipped(id, x, y, w, h) {
     n := SlotOf(id)
     sizeOK := (Abs(pw - w) <= 1 && Abs(ph - h) <= 1)
     posOK := (px = x && py = y)
-    clipOK := ClipIsRight(id)
+    clipOK := ClipIsRight(id) || KeepFrame.Has(id)
     Placed[id] := true
     if (sizeOK && posOK && clipOK)
         return false
@@ -1130,9 +1164,9 @@ FollowUpClip(id, x, y, w, h, tries, *) {
         WinGetClientPos(&px, &py, &pw, &ph, "ahk_id " id)
         sizeOK := (Abs(pw - w) <= 1 && Abs(ph - h) <= 1)
         posOK := (px = x && py = y)
-        clipOK := ClipIsRight(id)
+        clipOK := ClipIsRight(id) || KeepFrame.Has(id)
         if (sizeOK && posOK && clipOK) {
-            WriteLog("slot " n ": in place - " desc " | clipped to picture")
+            WriteLog("slot " n ": in place - " desc)
             lastSeen.Delete(id)
             return
         }
@@ -1353,6 +1387,7 @@ ManualArrange(*) {
     global ForceResync
     Unmanaged.Clear()
     Fixes.Clear()
+    KeepFrame.Clear()
     ForceResync := true
     try Arrange()
     ForceResync := false
@@ -1553,11 +1588,12 @@ SaveLayout(*) {
 RestoreBorders(*) {
     for id in Slots
         if id {
+            KeepFrame[id] := true
             try DllCall("SetWindowRgn", "Ptr", id, "Ptr", 0, "Int", 1)
             ClipFor.Delete(id)
             try WinSetStyle("+0xC40000", "ahk_id " id)
         }
-    Status("Window borders restored")
+    Status("Window borders restored (until the next Arrange)")
 }
 
 CheckActive() {

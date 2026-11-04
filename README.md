@@ -199,8 +199,9 @@ While broadcasting is on, a **BROADCAST ON** label stays at the top-left of the 
 - **Before each launch** (`PrepareIni=1`), the app writes the slot's position and size into eqclient.ini, so EverQuest opens exactly in its slot. This matters because EverQuest maps the mouse from the position it started at. Moving a client afterward makes the mouse drift.
 - **Settling:** the app leaves a new client alone until its window size has stayed the same for `SettleTime` ms (15 seconds by default), because EverQuest resizes itself while starting. Touching it earlier can leave it drawing a smaller picture than its window.
 - **One at a time:** Launch All waits for each client to settle and be arranged before starting the next, plus `LaunchDelay` (12 seconds). It's slower, but clients no longer start up on top of each other.
-- **Arranged once:** after the client has settled, the app removes its borders and fits it to its slot once, then leaves its size alone. Fighting EverQuest over size makes the picture shrink, grow or stretch.
-- **Borders put back:** if EverQuest puts its title bar back on later, the app takes it off again. It doesn't otherwise touch a client that's already been arranged.
+- **Title bar hidden straight away:** with the default `BorderMode=Clip`, a client's title bar is hidden as soon as its window appears, while it is still loading. Hiding it this way doesn't move or resize the window, so it's safe during start-up. Until the client is arranged, its picture may sit slightly below or beside its slot.
+- **Arranged once:** after the client has settled, the app moves it so its picture sits exactly on its slot, then leaves its size alone. Fighting EverQuest over size makes the picture shrink, grow or stretch.
+- **Hidden title bars stay hidden:** the app checks several times a second and hides a title bar again if it comes back. It doesn't otherwise touch a client that's already been arranged.
 - If a client isn't in its slot, the control panel shows **"not in its slot, restart it"**. Close that client and start it again.
 - Clients beyond the `Slots` count are left alone.
 
@@ -295,7 +296,7 @@ The active client sits in a large **main** region (2880×1620 by default) and th
 **Limitation:** EverQuest stretches instead of redrawing when its window is resized, and moving a client after it starts breaks the mouse. Swap therefore looks and behaves worse than Grid with EverQuest. The regions are defined in `[SwapLayout]`.
 
 ### Borders
-`HideBorders=1` hides title bars and borders so clients sit edge to edge. **Ctrl+Alt+U** shows them again.
+`HideBorders=1` hides title bars and borders so clients sit edge to edge. **Ctrl+Alt+U** shows them again until the next Arrange (**Ctrl+Alt+G**).
 
 By default (`BorderMode=Clip`) the app doesn't remove EverQuest's title bar. EverQuest keeps putting it back, which squashes its picture. Instead, the app places each window so its **picture** sits exactly on the slot, and tells Windows to show only the picture area. The title bar and border still exist for EverQuest, but they're invisible, can't be clicked, and don't cover neighbouring windows. `BorderMode=Strip` goes back to removing the title bar.
 
