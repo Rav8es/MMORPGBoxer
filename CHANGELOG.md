@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0
+- New **Clickable Views** window (Ctrl+Alt+E, **Edit Views** on the toolbar, or **Clickable Views...** in the control panel): make views, change the area a view copies, move or resize it, rename, delete, flash where it is, change which slot it copies from, set its opacity, and choose whether views show at start-up and what clicking one does. It replaces the toolbar's New View button.
+- Tooltips on every toolbar and control panel button showing what it does and its keyboard shortcut. Turn them off with **Show tooltips with shortcuts** in the control panel (`[General] ShowTooltips`).
+- The control panel's "Video FX On/Off" button is now "Views On/Off", and Diagnostics and Check for Updates sit together on one row.
+- The README no longer refers to other multiboxing software.
+
 ## 1.1.6
 - Fix: clickable views showed an area offset from the one you selected (shifted up and to the left by about the size of the title bar and border). Windows' image of a client can include its hidden title bar and border; the app now measures where the picture starts in that image instead of assuming. Existing views are fixed too; there's no need to make them again.
 - Views rebuild themselves if a client's frame changes after the view was made.

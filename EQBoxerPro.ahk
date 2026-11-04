@@ -2,7 +2,7 @@
 #SingleInstance Force
 Persistent
 ; =====================================================================
-;  EQ Boxer Pro - an ISBoxer-style multiboxing tool for EverQuest Live
+;  EQ Boxer Pro - a multiboxing tool for EverQuest Live
 ;
 ;  Features
 ;    - Character slots and a launcher (Launch All)
@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "EQ Boxer Pro"
-global APP_VERSION := "1.1.6"
+global APP_VERSION := "1.2.0"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/BoxerPro"
 ; installed copies ship an icon next to the script
@@ -163,6 +163,10 @@ global HLLast := ""
 global VfxByHwnd := Map()    ; view overlay window -> view
 global Panel := 0, LV := 0, SB := 0
 global PanelSel := 1, PEName := 0, PEUser := 0, PESlot := 0, PEInfo := 0, PERes := 0
+global VM := 0                ; Clickable Views window and its controls
+global TipsOn := Cfg("General", "ShowTooltips", "1") = "1"
+global Tips := Map()          ; control hwnd -> tooltip text
+global TipHwnd := 0           ; control the pointer is over
 
 ; ------------------------------ Hotkeys -------------------------------
 ; App hotkeys first (they take priority over broadcast hotkeys on the same key).
@@ -182,6 +186,7 @@ BindHotkey("ControlPanel",    "^!h", TogglePanel)
 BindHotkey("ToggleVFX",       "^!v", ToggleVFX)
 BindHotkey("CreateView",      "^!c", CreateView)
 BindHotkey("DeleteView",      "^!d", DeleteView)
+BindHotkey("ViewManager",     "^!e", ShowViews)
 BindHotkey("LaunchAll",       "^!l", LaunchAll)
 BindHotkey("Accounts",        "^!a", ShowAccounts)
 BindHotkey("ReloadConfig",    "^!r", (*) => Reload(), "S")
@@ -214,6 +219,7 @@ LoadVFX()
 OnMessage(0x201, VfxMouse)   ; WM_LBUTTONDOWN on a view
 OnMessage(0x204, VfxMouse)   ; WM_RBUTTONDOWN on a view
 OnMessage(0x201, ToolbarLButton)   ; drag the toolbar
+OnMessage(0x200, TipMouseMove)     ; WM_MOUSEMOVE: tooltips on buttons
 OnMessage(0x232, ToolbarMoved)     ; WM_EXITSIZEMOVE: save toolbar position
 
 ; ------------------------------ Tray menu -----------------------------
@@ -223,6 +229,7 @@ A_TrayMenu.Add("Control Panel", TogglePanel)
 A_TrayMenu.Add("Show/Hide Toolbar", ToggleToolbar)
 A_TrayMenu.Add("Launch All", LaunchAll)
 A_TrayMenu.Add("Characters && Accounts...", ShowAccounts)
+A_TrayMenu.Add("Clickable Views...", ShowViews)
 A_TrayMenu.Add("Setup Wizard...", ShowWizard)
 A_TrayMenu.Add("Diagnostics...", Diagnostics)
 A_TrayMenu.Add("Check for Updates...", (*) => CheckForUpdates(false))
@@ -2375,14 +2382,15 @@ VfxClickAt(v, cx, cy, button) {
 ToggleVFX(*) {
     global VFXOn
     if (VFX.Length = 0) {
-        Status("No views yet - press Ctrl+Alt+C to create one")
+        Status("No views yet - open Clickable Views (" NiceKey(Cfg("Hotkeys", "ViewManager", "^!e")) ") to make one")
         return
     }
     VFXOn := !VFXOn
     RefreshVFX()
     RefreshPanel()
     UpdateToolbar()
-    Status("Video FX " (VFXOn ? "ON" : "OFF"))
+    VMRefresh()
+    Status("Views " (VFXOn ? "ON" : "OFF"))
 }
 
 ; ---------------------- Create / delete views by dragging ----------------------
@@ -2424,17 +2432,18 @@ SelectRect(prompt) {
     return result
 }
 
-CreateView(*) {
-    global VFXOn
+; Ask for an area of a client to copy. Returns {slot, src, w, h}, or 0.
+PickViewSource(prompt) {
     RefreshSlots()
     if (CountClients() = 0) {
         Status("No clients running")
-        return
+        return 0
     }
-    ; 1) the area to copy
-    r1 := SelectRect("Step 1 of 2: drag a box around the area to copy (e.g. slot 2's hotbar)")
-    if (!r1 || r1.w < 8 || r1.h < 8)
-        return Status("View cancelled")
+    r1 := SelectRect(prompt)
+    if (!r1 || r1.w < 8 || r1.h < 8) {
+        Status("View cancelled")
+        return 0
+    }
     cxm := r1.x + r1.w // 2, cym := r1.y + r1.h // 2
     srcSlot := 0
     for n, id in Slots {
@@ -2448,34 +2457,57 @@ CreateView(*) {
             break
         }
     }
-    if !srcSlot
-        return Status("That area isn't inside an EverQuest client", 4000)
+    if !srcSlot {
+        Status("That area isn't inside an EverQuest client", 4000)
+        return 0
+    }
     refW := ToInt(Cfg("VFX", "ReferenceWidth", "1920"), 1920)
     refH := ToInt(Cfg("VFX", "ReferenceHeight", "1080"), 1080)
     fx := refW / ww, fy := refH / wh
     src := {x: Round((r1.x - wx) * fx), y: Round((r1.y - wy) * fy)
           , w: Round(r1.w * fx), h: Round(r1.h * fy)}
-    ; 2) where to show it (a plain click = same size at that spot)
-    r2 := SelectRect("Step 2 of 2: drag a box where the copy should go (or just click to place it at the same size)")
-    if !r2
-        return Status("View cancelled")
+    return {slot: srcSlot, src: src, w: r1.w, h: r1.h}
+}
+
+; Ask where a view goes (a plain click keeps the size w x h).
+; Returns the spot relative to the monitor, or 0.
+PickViewPlace(prompt, w, h) {
+    r2 := SelectRect(prompt)
+    if !r2 {
+        Status("View cancelled")
+        return 0
+    }
     if (r2.w < 8 || r2.h < 8)
-        r2 := {x: r2.x, y: r2.y, w: r1.w, h: r1.h}
+        r2 := {x: r2.x, y: r2.y, w: w, h: h}
     MonitorGet(MonitorNum, &mL, &mT)
-    ; unique name
+    return {x: r2.x - mL, y: r2.y - mT, w: r2.w, h: r2.h}
+}
+
+SaveView(v) {
+    IniWrite(v.Slot "|" v.Src.x "," v.Src.y "," v.Src.w "," v.Src.h "|" v.Dst.x "," v.Dst.y "," v.Dst.w "," v.Dst.h "|" v.Opacity
+        , CFG_FILE, "VFX", v.Name)
+}
+
+CreateView(*) {
+    global VFXOn
+    s := PickViewSource("Step 1 of 2: drag a box around the area to copy (e.g. slot 2's hotbar)")
+    if !s
+        return
+    d := PickViewPlace("Step 2 of 2: drag a box where the copy should go (or just click to place it at the same size)", s.w, s.h)
+    if !d
+        return
     i := 1
     while HasViewName("View" i)
         i++
-    name := "View" i
-    value := srcSlot "|" src.x "," src.y "," src.w "," src.h "|" (r2.x - mL) "," (r2.y - mT) "," r2.w "," r2.h "|255"
-    IniWrite(value, CFG_FILE, "VFX", name)
-    VFX.Push({Name: name, Slot: srcSlot, Src: src
-            , Dst: {x: r2.x - mL, y: r2.y - mT, w: r2.w, h: r2.h}
-            , Opacity: 255, Gui: 0, Thumb: 0})
+    v := {Name: "View" i, Slot: s.slot, Src: s.src, Dst: d, Opacity: 255, Gui: 0, Thumb: 0}
+    SaveView(v)
+    VFX.Push(v)
     VFXOn := true
     RefreshVFX()
     RefreshPanel()
-    Status("Created " name " from slot " srcSlot ". Click it to use slot " srcSlot "'s buttons.", 5000)
+    UpdateToolbar()
+    VMRefresh(v.Name)
+    Status("Created " v.Name " from slot " v.Slot ". Click it to use slot " v.Slot "'s buttons.", 5000)
 }
 
 HasViewName(name) {
@@ -2498,7 +2530,324 @@ DeleteView(*) {
             VFX.RemoveAt(i)
             break
         }
+    VMRefresh()
     Status("Deleted " v.Name)
+}
+
+; ------------------------- Clickable Views window -------------------------
+ShowViews(*) {
+    global VM
+    if !VM {
+        g := Gui(, APP " - Clickable Views")
+        g.SetFont("s10", "Segoe UI")
+        VM := {gui: g}
+        g.AddText("xm w640 cGray", "A view is a live copy of part of one client - for example slot 2's hotbar - that you can put anywhere on screen. Clicking a button in the view clicks the real button in that client.")
+        VM.list := g.AddListView("xm y+8 w640 r8 -Multi", ["View", "Copies from", "Area copied", "Shown at", "Opacity"])
+        VM.list.OnEvent("ItemSelect", VMSelect)
+        VM.list.OnEvent("DoubleClick", (*) => VMRename())
+        bw := "w154 h32"
+        VBtn(opts, label, fn, tip) {
+            btn := g.AddButton(opts, label)
+            btn.OnEvent("Click", fn)
+            AddTip(btn, tip)
+        }
+        VBtn("xm y+10 " bw " Section", "New View...", (*) => VMNew()
+            , TipText("Drag a box around the area to copy, then where the copy should go", "CreateView", "^!c"))
+        VBtn("x+8 yp " bw, "Change Area...", (*) => VMArea()
+            , TipText("Pick a new area for the selected view to copy (from any client)"))
+        VBtn("x+8 yp " bw, "Move / Resize...", (*) => VMPlace()
+            , TipText("Drag a new box for where the selected view is shown.`nJust click to move it without changing its size."))
+        VBtn("x+8 yp " bw, "Rename...", (*) => VMRename()
+            , TipText("Rename the selected view (or double-click it in the list)"))
+        VBtn("xs y+8 " bw, "Show Where", (*) => VMFlash()
+            , TipText("Flash a red box where the selected view is"))
+        VBtn("x+8 yp " bw, "Delete", (*) => VMDelete()
+            , TipText("Delete the selected view.`nIn game, point at a view and press the shortcut to delete it.", "DeleteView", "^!d"))
+        VBtn("x+8 yp " bw, "Delete All...", (*) => VMDeleteAll()
+            , TipText("Delete every view"))
+        VBtn("x+8 yp " bw, "Close", (*) => g.Hide(), TipText("Close this window (views stay as they are)"))
+        g.AddGroupBox("xm y+14 w640 h96", "Selected view")
+        g.AddText("xp+12 yp+28 w120 h28 0x200", "Copies from slot:")
+        slotNames := []
+        Loop MAX_SLOTS
+            slotNames.Push(A_Index (Chars[A_Index] != "" ? " - " Chars[A_Index] : ""))
+        VM.slot := g.AddDropDownList("x+4 yp w170", slotNames)
+        VM.slot.OnEvent("Change", VMSlotChange)
+        AddTip(VM.slot, TipText("Copy the same area from a different client (useful when every client has its hotbar in the same place)"))
+        g.AddText("x+24 yp w64 h28 0x200", "Opacity:")
+        VM.op := g.AddSlider("x+4 yp w170 Range20-100 TickInterval10 ToolTip", 100)
+        VM.op.OnEvent("Change", VMOpacityChange)
+        AddTip(VM.op, TipText("How see-through the selected view is"))
+        VM.info := g.AddText("xm+12 y+10 w616 cGray", "")
+        VM.show := g.AddCheckbox("xm y+22 w300", "Show views")
+        VM.show.OnEvent("Click", VMShowChange)
+        AddTip(VM.show, TipText("Show or hide every view", "ToggleVFX", "^!v"))
+        VM.start := g.AddCheckbox("x+8 yp w330", "Show views when EQ Boxer Pro starts")
+        VM.start.OnEvent("Click", (c, *) => IniWrite(c.Value ? 1 : 0, CFG_FILE, "VFX", "StartOn"))
+        AddTip(VM.start, TipText("Turn views on automatically every time the app starts"))
+        g.AddText("xm y+12 w160 h28 0x200", "Clicking a view:")
+        VM.mode := g.AddDropDownList("x+4 yp w476", ["Switch - click the real button in that client (most reliable)"
+            , "Send - click in the background (EverQuest may ignore it)", "Focus - just switch to that client"])
+        VM.mode.OnEvent("Change", (c, *) => IniWrite(StrSplit(c.Text, " ")[1], CFG_FILE, "VFX", "ClickMode"))
+        AddTip(VM.mode, TipText("What happens when you click a view"))
+        VM.status := g.AddText("xm y+12 w640 cGray", "Tip: views need the client they copy from to be running and not minimized.")
+        g.OnEvent("Close", (*) => g.Hide())
+        g.OnEvent("Escape", (*) => g.Hide())
+    }
+    VM.gui.Show()
+    VMRefresh()
+}
+
+VMVisible() => (VM && DllCall("IsWindowVisible", "Ptr", VM.gui.Hwnd))
+
+; Fill the list; keep (or select) the view called keep.
+VMRefresh(keep := "") {
+    if !VMVisible()
+        return
+    if (keep = "") {
+        v := VMSelected()
+        keep := v ? v.Name : ""
+    }
+    VM.list.Opt("-Redraw")
+    VM.list.Delete()
+    sel := 0
+    for i, v in VFX {
+        slotTxt := v.Slot (v.Slot >= 1 && v.Slot <= MAX_SLOTS && Chars[v.Slot] != "" ? " - " Chars[v.Slot] : "")
+            . ((v.Slot >= 1 && v.Slot <= MAX_SLOTS && Slots[v.Slot]) ? "" : " (not running)")
+        VM.list.Add(, v.Name, slotTxt, v.Src.x "," v.Src.y "  " v.Src.w "x" v.Src.h
+            , v.Dst.x "," v.Dst.y "  " v.Dst.w "x" v.Dst.h, Round(v.Opacity / 2.55) "%")
+        if (v.Name = keep)
+            sel := i
+    }
+    if (!sel && VFX.Length)
+        sel := 1
+    Loop 5
+        VM.list.ModifyCol(A_Index, "AutoHdr")
+    if sel
+        VM.list.Modify(sel, "Select Focus Vis")
+    VM.list.Opt("+Redraw")
+    VM.show.Value := VFXOn
+    VM.start.Value := Cfg("VFX", "StartOn", "0") = "1"
+    mode := Cfg("VFX", "ClickMode", "Switch")
+    VM.mode.Choose(mode = "Send" ? 2 : mode = "Focus" ? 3 : 1)
+    VMLoad()
+}
+
+VMSelected() {
+    if !VM
+        return 0
+    row := VM.list.GetNext(0)
+    return (row >= 1 && row <= VFX.Length) ? VFX[row] : 0
+}
+
+VMSelect(*) => VMLoad()
+
+; Show the selected view's settings.
+VMLoad() {
+    v := VMSelected()
+    for c in [VM.slot, VM.op]
+        c.Enabled := !!v
+    if !v {
+        VM.info.Text := VFX.Length ? "Select a view above." : "No views yet. Click New View... to make one."
+        return
+    }
+    if (v.Slot >= 1 && v.Slot <= MAX_SLOTS)
+        VM.slot.Choose(v.Slot)
+    VM.op.Value := Max(20, Round(v.Opacity / 2.55))
+    VM.info.Text := v.Name ": copies " v.Src.w "x" v.Src.h " from slot " v.Slot " (in 1920x1080 terms), shown "
+        . v.Dst.w "x" v.Dst.h " at " v.Dst.x "," v.Dst.y " on screen."
+}
+
+; Run a screen-picking step with this window out of the way.
+VMPick(fn) {
+    VM.gui.Hide()
+    try fn()
+    VM.gui.Show()
+    VMRefresh()
+}
+
+VMNew() => VMPick(CreateView)
+
+VMNeedSel() {
+    v := VMSelected()
+    if !v
+        MsgBox("Select a view in the list first.", APP, "Iconi Owner" VM.gui.Hwnd)
+    return v
+}
+
+VMArea() {
+    if !(v := VMNeedSel())
+        return
+    VMPick(DoArea)
+    DoArea() {
+        s := PickViewSource("Drag a box around the new area for " v.Name " to copy")
+        if !s
+            return
+        v.Slot := s.slot, v.Src := s.src
+        SaveView(v)
+        RefreshVFX()
+        Status(v.Name " now copies from slot " v.Slot)
+    }
+}
+
+VMPlace() {
+    if !(v := VMNeedSel())
+        return
+    VMPick(DoPlace)
+    DoPlace() {
+        d := PickViewPlace("Drag a box where " v.Name " should go (or just click to move it at the same size)", v.Dst.w, v.Dst.h)
+        if !d
+            return
+        v.Dst := d
+        SaveView(v)
+        RefreshVFX()
+        Status(v.Name " moved")
+    }
+}
+
+VMRename() {
+    if !(v := VMNeedSel())
+        return
+    ib := InputBox("New name for " v.Name ":", APP, "w320 h130", v.Name)
+    if (ib.Result != "OK")
+        return
+    name := Trim(ib.Value)
+    if (name = "" || RegExMatch(name, "[=|\[\];]")) {
+        MsgBox("Use a name without = | [ ] or ;", APP, "Icon! Owner" VM.gui.Hwnd)
+        return
+    }
+    if (name != v.Name && HasViewName(name)) {
+        MsgBox("There's already a view called " name ".", APP, "Icon! Owner" VM.gui.Hwnd)
+        return
+    }
+    try IniDelete(CFG_FILE, "VFX", v.Name)
+    v.Name := name
+    SaveView(v)
+    VMRefresh(name)
+}
+
+VMDelete() {
+    if !(v := VMNeedSel())
+        return
+    if (MsgBox("Delete " v.Name "?", APP, "YesNo Icon? Owner" VM.gui.Hwnd) != "Yes")
+        return
+    DestroyVFX(v)
+    try IniDelete(CFG_FILE, "VFX", v.Name)
+    for i, x in VFX
+        if (x = v) {
+            VFX.RemoveAt(i)
+            break
+        }
+    VMRefresh()
+    Status("Deleted " v.Name)
+}
+
+VMDeleteAll() {
+    if !VFX.Length
+        return
+    if (MsgBox("Delete all " VFX.Length " view(s)?", APP, "YesNo Icon! Owner" VM.gui.Hwnd) != "Yes")
+        return
+    for v in VFX {
+        DestroyVFX(v)
+        try IniDelete(CFG_FILE, "VFX", v.Name)
+    }
+    VFX.Length := 0
+    VMRefresh()
+    UpdateToolbar()
+    Status("Deleted all views")
+}
+
+; Flash a red box where the selected view is.
+VMFlash() {
+    if !(v := VMNeedSel())
+        return
+    MonitorGet(MonitorNum, &mL, &mT)
+    box := Gui("+AlwaysOnTop -Caption +ToolWindow -DPIScale +E0x20")
+    box.BackColor := "FF3030"
+    box.Show("NA x" (mL + v.Dst.x) " y" (mT + v.Dst.y) " w" v.Dst.w " h" v.Dst.h)
+    WinSetTransparent(120, box)
+    SetTimer(() => box.Destroy(), -1200)
+}
+
+VMSlotChange(ctrl, *) {
+    if !(v := VMSelected())
+        return
+    v.Slot := ctrl.Value
+    SaveView(v)
+    RefreshVFX()
+    VMRefresh(v.Name)
+}
+
+VMOpacityChange(ctrl, *) {
+    if !(v := VMSelected())
+        return
+    v.Opacity := Round(ctrl.Value * 2.55)
+    SaveView(v)
+    RefreshVFX()
+    VMRefresh(v.Name)
+}
+
+VMShowChange(ctrl, *) {
+    global VFXOn
+    VFXOn := !!ctrl.Value
+    RefreshVFX()
+    RefreshPanel()
+    UpdateToolbar()
+    Status("Views " (VFXOn ? "ON" : "OFF"))
+}
+
+; ------------------------------ Tooltips ------------------------------
+; Hovering a button shows what it does and its keyboard shortcut.
+; [General] ShowTooltips=0 (or the control panel checkbox) turns them off.
+AddTip(ctrl, text) {
+    Tips[ctrl.Hwnd] := text
+    return ctrl
+}
+
+; "what it does" + the shortcut currently set in [Hotkeys] for name
+TipText(desc, name := "", def := "") {
+    if (name = "")
+        return desc
+    k := Cfg("Hotkeys", name, def)
+    return desc "`nShortcut: " (k != "" ? NiceKey(k) : "none")
+}
+
+TipMouseMove(wParam, lParam, msg, hwnd) {
+    global TipHwnd
+    if (!TipsOn || !Tips.Has(hwnd) || TipHwnd = hwnd)
+        return
+    TipHwnd := hwnd
+    ToolTip(, , , 5)
+    SetTimer(TipShow, -450)
+    SetTimer(TipWatch, 100)
+}
+
+TipShow() {
+    if (!TipsOn || !TipHwnd || !Tips.Has(TipHwnd))
+        return
+    MouseGetPos(, , , &c, 2)
+    if (c = TipHwnd)
+        ToolTip(Tips[TipHwnd], , , 5)
+}
+
+; Hide the tooltip once the pointer leaves the control.
+TipWatch() {
+    global TipHwnd
+    MouseGetPos(, , , &c, 2)
+    if (TipsOn && c = TipHwnd)
+        return
+    TipHwnd := 0
+    ToolTip(, , , 5)
+    SetTimer(TipWatch, 0)
+}
+
+SetTipsOn(ctrl, *) {
+    global TipsOn
+    TipsOn := !!ctrl.Value
+    IniWrite(TipsOn ? 1 : 0, CFG_FILE, "General", "ShowTooltips")
+    if !TipsOn
+        ToolTip(, , , 5)
+    Status("Tooltips " (TipsOn ? "on" : "off"))
 }
 
 ; ----------------------- Active client highlight -----------------------
@@ -2939,7 +3288,7 @@ BuildToolbar() {
     TBAdd("mirror",  "Mirror",     ToggleMirror, "Mirror ON")
     TBAdd("vfx",     "Views",      ToggleVFX, "Views ON")
     TBAdd("audio",   "Sound: All", ToggleAudio, "Sound: Active")
-    TBAdd("newview", "New View",   CreateView)
+    TBAdd("views",   "Edit Views", ShowViews)
     TBAdd("arrange", "Arrange",    ManualArrange)
     TBAdd("layout",  "Layout",     ToggleLayout)
     TBAdd("launch",  "Launch All", LaunchAll)
@@ -2964,6 +3313,29 @@ BuildToolbar() {
             grip.Move(Round(4 * k), TBPos.y, Round(18 * k), bh)
         break
     }
+    ; tooltips: what each button does and its shortcut
+    fm := Cfg("Hotkeys", "FocusSlotModifier", "^"), am := Cfg("Hotkeys", "AssignSlotModifier", "^!")
+    Loop MAX_SLOTS
+        if TBBtns.Has("slot" A_Index)
+            AddTip(TBBtns["slot" A_Index].ctrl, "Switch to slot " A_Index (Chars[A_Index] != "" ? " (" Chars[A_Index] ")" : "")
+                . "`nShortcut: " NiceKey(fm) "F" A_Index "`n" NiceKey(am) "F" A_Index " moves the client you're in to this slot")
+    for row in [["bc", "Broadcast on/off: keys you press are pressed in every client", "ToggleBroadcast", "^!b"]
+              , ["mirror", "Mirror on/off: clicks are repeated in every client", "ToggleMirror", "^!m"]
+              , ["vfx", "Show or hide your clickable views", "ToggleVFX", "^!v"]
+              , ["audio", "Sound from the client you're in only, or from all clients", "ToggleAudio", "^!o"]
+              , ["views", "Open Clickable Views: make, move, change and delete views", "ViewManager", "^!e"]
+              , ["arrange", "Put every client back in its slot", "Arrange", "^!g"]
+              , ["layout", "Switch to the next layout", "ToggleLayout", "^!s"]
+              , ["launch", "Start every slot that has a character", "LaunchAll", "^!l"]
+              , ["pause", "Pause or resume all EQ Boxer Pro hotkeys", "Pause", "^!p"]
+              , ["panel", "Show or hide the control panel", "ControlPanel", "^!h"]
+              , ["hide", "Hide this toolbar", "ToggleToolbar", "^!k"]]
+        if TBBtns.Has(row[1])
+            AddTip(TBBtns[row[1]].ctrl, TipText(row[2], row[3], row[4]))
+    if TBBtns.Has("bar")
+        AddTip(TBBtns["bar"].ctrl, "Toolbar look: size, colours, transparency, layout`nOver the bar: Ctrl+Wheel = size, Shift+Wheel = transparency")
+    if TBBtns.Has("help")
+        AddTip(TBBtns["help"].ctrl, "List every keyboard shortcut")
     TB.OnEvent("ContextMenu", ToolbarMenu)
     UpdateToolbar()
     SetTimer(ToolbarMarkActive, 200)
@@ -3079,6 +3451,8 @@ DoRebuildToolbar() {
 }
 
 DestroyOldToolbar(old, oldBtns, *) {
+    for key, v in oldBtns
+        try Tips.Delete(v.ctrl.Hwnd)
     try old.Destroy()
 }
 
@@ -3279,6 +3653,7 @@ HotkeyHelp(*) {
     for row in [["NextClient", "^!n", "Next client"], ["ToggleBroadcast", "^!b", "Broadcast on/off"]
               , ["ToggleMirror", "^!m", "Mirror mode on/off"], ["CreateView", "^!c", "New clickable view"]
               , ["DeleteView", "^!d", "Delete view under mouse"], ["ToggleVFX", "^!v", "Views on/off"]
+              , ["ViewManager", "^!e", "Clickable Views window"]
               , ["Arrange", "^!g", "Arrange / re-sync"], ["ToggleLayout", "^!s", "Next layout"]
               , ["LaunchAll", "^!l", "Launch All"], ["Accounts", "^!a", "Slots (names & usernames)"]
               , ["RestoreBorders", "^!u", "Restore borders"], ["ControlPanel", "^!h", "Control panel"]
@@ -3341,18 +3716,28 @@ BuildPanel() {
     PEInfo := Panel.AddText("xm y+6 w624 cGray", "Click a slot above, set its character, account name and resolution, then Save. Launch All pre-fills the account name at the EverQuest login screen.")
     ; buttons: fixed height so a long label can never wrap into the next row
     bw := "w150 h32"
-    Panel.AddButton("xm y+12 " bw " Section", "Launch All").OnEvent("Click", LaunchAll)
-    Panel.AddButton("x+8 yp " bw, "Arrange").OnEvent("Click", ManualArrange)
-    Panel.AddButton("x+8 yp " bw, "Save Layout...").OnEvent("Click", SaveLayout)
-    Panel.AddButton("x+8 yp " bw, "Mirror On/Off").OnEvent("Click", ToggleMirror)
-    Panel.AddButton("xs y+8 " bw, "Broadcast On/Off").OnEvent("Click", ToggleBroadcast)
-    Panel.AddButton("x+8 yp " bw, "Video FX On/Off").OnEvent("Click", ToggleVFX)
-    Panel.AddButton("x+8 yp " bw, "Edit Config").OnEvent("Click", EditConfig)
-    Panel.AddButton("x+8 yp " bw, "Reload Config").OnEvent("Click", (*) => Reload())
-    Panel.AddButton("xs y+8 " bw, "Show/Hide Toolbar").OnEvent("Click", ToggleToolbar)
-    Panel.AddButton("x+8 yp w150 h32", "Characters...").OnEvent("Click", ShowAccounts)
-    Panel.AddButton("x+8 yp w150 h32", "Setup Wizard...").OnEvent("Click", ShowWizard)
-    Panel.AddButton("x+8 yp w150 h32", "Diagnostics...").OnEvent("Click", Diagnostics)
+    PB(opts, label, fn, tip) {
+        b := Panel.AddButton(opts, label)
+        b.OnEvent("Click", fn)
+        AddTip(b, tip)
+    }
+    PB("xm y+12 " bw " Section", "Launch All", LaunchAll, TipText("Start every slot that has a character", "LaunchAll", "^!l"))
+    PB("x+8 yp " bw, "Arrange", ManualArrange, TipText("Put every client back in its slot", "Arrange", "^!g"))
+    PB("x+8 yp " bw, "Save Layout...", SaveLayout, TipText("Save where the clients are now as a new layout"))
+    PB("x+8 yp " bw, "Mirror On/Off", ToggleMirror, TipText("Clicks are repeated in every client", "ToggleMirror", "^!m"))
+    PB("xs y+8 " bw, "Broadcast On/Off", ToggleBroadcast, TipText("Keys you press are pressed in every client", "ToggleBroadcast", "^!b"))
+    PB("x+8 yp " bw, "Views On/Off", ToggleVFX, TipText("Show or hide your clickable views", "ToggleVFX", "^!v"))
+    PB("x+8 yp " bw, "Clickable Views...", ShowViews, TipText("Make, move, change and delete clickable views", "ViewManager", "^!e"))
+    PB("x+8 yp " bw, "Characters...", ShowAccounts, TipText("Character and account names for each slot", "Accounts", "^!a"))
+    PB("xs y+8 " bw, "Show/Hide Toolbar", ToggleToolbar, TipText("Show or hide the on-screen button bar", "ToggleToolbar", "^!k"))
+    PB("x+8 yp " bw, "Setup Wizard...", ShowWizard, TipText("Set everything up step by step", "SetupWizard", "^!w"))
+    PB("x+8 yp " bw, "Edit Config", EditConfig, TipText("Open EQBoxer.ini in Notepad"))
+    PB("x+8 yp " bw, "Reload Config", (*) => Reload(), TipText("Restart EQ Boxer Pro to apply changes made in EQBoxer.ini", "ReloadConfig", "^!r"))
+    PB("xs y+8 " bw, "Diagnostics...", Diagnostics, TipText("Write a report of every window and the recent log (to send when something's wrong)"))
+    PB("x+8 yp " bw, "Check for Updates", (*) => CheckForUpdates(false), TipText("Look for a newer version of EQ Boxer Pro"))
+    tipBox := Panel.AddCheckbox("x+12 yp w300 h32" (TipsOn ? " Checked" : ""), "Show tooltips with shortcuts")
+    tipBox.OnEvent("Click", SetTipsOn)
+    AddTip(tipBox, "Show what each button does and its keyboard shortcut when you point at it")
     ; layout and slot count on their own row
     Panel.AddText("xs y+14 w60 h28 0x200", "Layout:")
     LayoutDDL := Panel.AddDropDownList("x+4 yp w250", LayoutNames())
@@ -3361,8 +3746,7 @@ BuildPanel() {
     Panel.AddText("x+20 yp w120 h28 0x200", "Number of slots:")
     ddl := Panel.AddDropDownList("x+4 yp w56 Choose" MAX_SLOTS, ["1", "2", "3", "4", "5", "6", "7", "8"])
     ddl.OnEvent("Change", SetSlotCount)
-    Panel.AddButton("xs y+10 w150 h32", "Check for Updates").OnEvent("Click", (*) => CheckForUpdates(false))
-    Panel.AddText("x+10 yp w464 h32 0x200 cGray", "Version " APP_VERSION ".  Double-click a slot to switch to it. Changing the number of slots saves and reloads.")
+    Panel.AddText("xs y+10 w624 h24 0x200 cGray", "Version " APP_VERSION ".  Double-click a slot to switch to it. Changing the number of slots saves and reloads.")
     SB := Panel.AddStatusBar()
     Panel.OnEvent("Close", (*) => Panel.Hide())
 }
@@ -3468,7 +3852,7 @@ RefreshPanel() {
     if (PanelSel >= 1 && PanelSel <= MAX_SLOTS)
         LV.Modify(PanelSel, "Select Focus")
     LV.Opt("+Redraw")
-    SB.SetText(Format("  Layout: {}    Broadcast: {}    Mirror: {}    Video FX: {}    Clients: {}"
+    SB.SetText(Format("  Layout: {}    Broadcast: {}    Mirror: {}    Views: {}    Clients: {}"
         , Layout, Broadcasting ? "ON" : "off", Mirroring ? "ON" : "off", VFXOn ? "ON" : "off", CountClients()))
 }
 
@@ -3500,6 +3884,8 @@ LaunchArgs=patchme
 LaunchDelay=12000
 ; Number of client slots to use (1-8)
 Slots=4
+; Show what each button does and its shortcut when you point at it (1/0)
+ShowTooltips=1
 ; Monitor to place the clients on
 Monitor=1
 ; Grid, Swap, or a preset: Top + 2 Bottom, Top + 3 Bottom, Left + 2 Right,
@@ -3676,6 +4062,7 @@ ToggleVFX=^!v
 ; Drag-to-create a clickable view, and delete the view under the mouse
 CreateView=^!c
 DeleteView=^!d
+ViewManager=^!e
 LaunchAll=^!l
 ; Open the Slots window (character names and usernames)
 Accounts=^!a

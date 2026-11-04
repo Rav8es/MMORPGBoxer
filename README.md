@@ -1,6 +1,6 @@
 # EQ Boxer Pro
 
-A multiboxing tool for **EverQuest Live** on Windows, modeled on ISBoxer. It runs on AutoHotkey v2 and is configured with a single INI file.
+A multiboxing tool for **EverQuest Live** on Windows. It runs on AutoHotkey v2 and is configured with a single INI file.
 
 It helps you run several EverQuest clients at once:
 - Launch them and lay them out in a grid on screen.
@@ -129,6 +129,7 @@ Press **Ctrl+Alt+H** to open the control panel, then click **Edit Config**.
 | Ctrl+Alt+C | `CreateView` | Create a clickable view (drag two boxes) |
 | Ctrl+Alt+D | `DeleteView` | Delete the view under the mouse |
 | Ctrl+Alt+V | `ToggleVFX` | Show/hide all views |
+| Ctrl+Alt+E | `ViewManager` | Open the Clickable Views window |
 | Ctrl+Alt+L | `LaunchAll` | Launch a client for every named slot (username pre-filled) |
 | Ctrl+Alt+A | `Accounts` | Open the Characters & Accounts window |
 | Ctrl+Alt+G | `Arrange` | Put any client that isn't in its slot back into place |
@@ -144,14 +145,17 @@ Press **Ctrl+Alt+H** to open the control panel, then click **Edit Config**.
 
 Broadcast, key maps and mouse broadcast only work while an EverQuest window is active. The other hotkeys work from anywhere.
 
+**Tooltips:** point at any button on the toolbar or in the control panel to see what it does and its keyboard shortcut. Turn them off or on with **Show tooltips with shortcuts** in the control panel (`ShowTooltips` in `[General]`). The tooltips show the shortcuts you've actually set in `[Hotkeys]`.
+
 ## 6. Control panel and tray menu
 The panel opens automatically when EQ Boxer starts (turn this off with `ShowPanelOnStart=0` in `[General]`). Open or close it any time with **Ctrl+Alt+H**, the **Panel** button on the toolbar, or by double-clicking the tray icon. Closing it with the X only hides it; EQ Boxer keeps running in the tray.
 
 - **Slot list:** every slot with its character name, account name, resolution and whether it's running. Click a slot to edit its names in the boxes below the list. Double-click a slot to switch to that client.
 - **Layout dropdown:** choose Grid, Swap, a preset, or your own saved layout.
-- **Buttons:** Launch All, Arrange, Save Layout..., Mirror On/Off, Broadcast On/Off, Video FX On/Off, Edit Config, Reload Config, Show/Hide Toolbar, Characters..., Setup Wizard....
+- **Buttons:** Launch All, Arrange, Save Layout..., Mirror On/Off, Broadcast On/Off, Views On/Off, Clickable Views..., Characters..., Show/Hide Toolbar, Setup Wizard..., Edit Config, Reload Config, Diagnostics..., Check for Updates.
+- **Show tooltips with shortcuts:** turns the button tooltips on or off.
 - **Number of slots:** choose 1–8. The app saves the setting and reloads.
-- **Status bar:** shows the layout, broadcast state, Video FX state and client count.
+- **Status bar:** shows the layout, broadcast state, views state and client count.
 
 The tray menu (right-click the tray icon) has Control Panel, Launch All, Arrange, Edit Config, Reload Config and Exit.
 
@@ -166,12 +170,13 @@ By default (`FollowActive=1` in `[Audio]`), only the client you're playing in ma
 A button bar that stays on top of the game, so you don't need to remember hotkeys. Show or hide it with **Ctrl+Alt+K**, the **X** on the bar, the tray menu, or the control panel.
 
 ```
-:: | 1 Tank | 2 Healer | 3 DPS1 | Broadcast | Mirror | Views | Sound | New View | Arrange | Layout | Launch All | Pause | Panel | Bar | ? | X
+:: | 1 Tank | 2 Healer | 3 DPS1 | Broadcast | Mirror | Views | Sound | Edit Views | Arrange | Layout | Launch All | Pause | Panel | Bar | ? | X
 ```
 - **Slot buttons** switch to that client. The client you're in is marked with `>` and shown in the ON colour.
 - **Broadcast, Mirror, Views, Sound, Pause** are toggles. They change text and turn the ON colour (green by default) while active.
-- **New View** creates a clickable view. **Arrange** fixes misplaced windows. **Layout** steps to the next layout. **Launch All** starts the clients. **Panel** opens the control panel.
+- **Edit Views** opens the Clickable Views window. **Arrange** fixes misplaced windows. **Layout** steps to the next layout. **Launch All** starts the clients. **Panel** opens the control panel.
 - **Bar** opens the bar's settings menu. **?** lists every hotkey. **X** hides the bar.
+- Point at a button to see what it does and its keyboard shortcut.
 - Clicking the bar **never takes focus from your game**, so buttons act on the client you're playing in.
 - **Move it:** drag the `::` grip on the left (or any gap between buttons). The position is remembered.
 
@@ -341,12 +346,12 @@ Every hop waits for the client to notice it is in front. EverQuest redraws backg
 - In `eqclient.ini` under `[Options]`, set **`MaxBGFPS=30`** (or 60). You can also set the background frame rate in-game under Alt+O → Display. At 9 FPS each hop can take over 100 ms. At 60 FPS it takes about 16 ms. A higher value uses more graphics power.
 - Then lower `SwitchDelay` (`[Broadcast]` and `[VFX]`, default 20) until clicks or keys start getting missed, and go back up a little.
 
-It can't be fully instant. ISBoxer is instant because it hooks into the game itself, and this app deliberately doesn't.
+It can't be fully instant: that would mean hooking into the game itself, which this app deliberately doesn't do.
 
 ### 9.4 Why the Switch method exists
 EverQuest reads the keyboard only while its window is in front. Keys sent to background windows (the **Send** method, and what earlier versions of this app did) are usually ignored. That's why broadcasting appeared to do nothing.
 
-ISBoxer gets around this by hooking into the game. This app uses only normal Windows features, so it briefly brings each client to the front instead.
+This app uses only normal Windows features and never hooks into the game, so it briefly brings each client to the front instead.
 
 ### 9.5 Which keys are broadcast
 Set in `[Broadcast]`:
@@ -400,19 +405,32 @@ Press **mouse button 4** (the back button on the side of most mice) over a clien
 ## 11. Clickable views (Video FX)
 A **view** is a live copy of part of one client, shown anywhere on screen. **Clicking the copy clicks the real button in the source client.** This is how you use slot 2's hotbar from slot 1.
 
-### 11.1 Create a view
-1. Press **Ctrl+Alt+C**. The screen dims.
+### 11.1 The Clickable Views window
+Open it with **Ctrl+Alt+E**, the **Edit Views** button on the toolbar, or **Clickable Views...** in the control panel. It lists every view and lets you:
+- **New View...:** make a view (see 11.2).
+- **Change Area...:** pick a new area for the selected view to copy, from any client.
+- **Move / Resize...:** drag a new box for where the selected view is shown, or just click to move it without changing its size.
+- **Rename...** (or double-click a view), **Delete**, **Delete All...**
+- **Show Where:** flashes a red box where the selected view is.
+- **Copies from slot:** make the selected view copy the same area from a different client.
+- **Opacity:** how see-through the selected view is.
+- **Show views**, **Show views when EQ Boxer Pro starts**, and **Clicking a view** (Switch, Send or Focus; see 11.5).
+
+The window hides itself while you drag boxes on screen and comes back afterwards.
+
+### 11.2 Create a view
+1. Click **New View...** in the Clickable Views window, or press **Ctrl+Alt+C**. The screen dims.
 2. **Step 1:** drag a red box around the area to copy, for example slot 2's hotbar.
 3. **Step 2:** drag a box where the copy should appear, for example a corner of slot 1. Or just **click once** to place it at the same size.
 4. The view appears immediately and is saved in `[VFX]`.
 
 Press **Esc** at either step to cancel.
 
-### 11.2 Use it
+### 11.3 Use it
 - **Left- or right-click** a button in the view. The app switches to the source client, clicks the real button, then switches back with the mouse where it was.
 - Modifier keys you hold (Shift, Ctrl, Alt) still apply to the click.
 
-### 11.3 Manage views
+### 11.4 Shortcuts and the config file
 - **Ctrl+Alt+D:** delete the view under the mouse.
 - **Ctrl+Alt+V:** hide or show all views.
 - Each view is one line in `[VFX]` that you can edit by hand:
@@ -421,7 +439,7 @@ Press **Esc** at either step to cancel.
   ```
   The parts are: source slot | source x,y,w,h (in a 1920×1080 client) | destination x,y,w,h (screen) | opacity 0–255.
 
-### 11.4 View settings
+### 11.5 View settings
 ```
 [VFX]
 ; 1 = show views when the app starts
@@ -499,6 +517,7 @@ Keep comments on their own lines. A `;` after a value becomes part of the value.
 | PrepareIni | `1` | Write slot position into eqclient.ini before launch |
 | UseWorkArea | `1` | Fit layouts above the taskbar (1) or use the whole screen (0) |
 | ShowPanelOnStart | `1` | Open the control panel when EQ Boxer starts |
+| ShowTooltips | `1` | Show what each button does and its shortcut when you point at it |
 | RunAsAdmin | `1` | Restart EQ Boxer as administrator (needed when EverQuest runs as admin) |
 
 ### [Characters]
@@ -612,5 +631,5 @@ Send that file to whoever is helping you fix a layout problem. The log is cleare
 
 ## 15. Rules and fair play
 - The app follows the long-standing community rule of thumb: **one key press = one action per client**. There are no delays, no timed sequences, and nothing runs unless you press a key or click.
-- Daybreak has never officially endorsed any multiboxing software, ISBoxer included. Use broadcasting at your own risk.
+- Daybreak has never officially endorsed any multiboxing software. Use broadcasting at your own risk.
 - Some servers (for example certain progression servers) limit how many accounts you may run at once. Check your server's rules.
