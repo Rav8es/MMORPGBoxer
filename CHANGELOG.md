@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.1
+- **Guide rewritten for all four games.** It starts with a feature list and a quick start, has a new "Supported games" section, and notes which features are EverQuest only. Stale parts (toolbar, control panel, tray menu, troubleshooting) are brought up to date.
+- **The guide is also the project's wiki** (github.com/Rav8es/MMORPGBoxer/wiki), one page per topic, updated automatically whenever the guide changes.
+- **Online Guide** in the tray menu, and the **?** button's shortcut list offers to open it.
+
 ## 1.8.0
 - **EverQuest II and EVE Online support.** Choose them in the Game box (control panel or Setup Wizard). Each game keeps its own MMORPGBoxer-<game>.ini.
 - EverQuest II: layouts, switching, clickable views, sound and CPU settings. Broadcasting, mirror mode, team commands and key maps are left out, following Daybreak's policy against software sending one command to several characters. Launch All opens LaunchPad.

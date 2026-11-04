@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "MMORPG Boxer"
-global APP_VERSION := "1.8.0"
+global APP_VERSION := "1.8.1"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/MMORPGBoxer"
 global OLD_UPDATE_REPO := "Rav8es/BoxerPro"     ; its name before the rename
@@ -274,6 +274,7 @@ A_TrayMenu.Add("Team && Performance...", ShowPerf)
 A_TrayMenu.Add("Setup Wizard...", ShowWizard)
 A_TrayMenu.Add("Diagnostics...", Diagnostics)
 A_TrayMenu.Add("Check for Updates...", (*) => CheckForUpdates(false))
+A_TrayMenu.Add("Online Guide", OpenGuide)
 A_TrayMenu.Add("Arrange", ManualArrange)
 A_TrayMenu.Add("Edit Config", EditConfig)
 A_TrayMenu.Add("Reload Config", (*) => Reload())
@@ -4943,7 +4944,18 @@ HotkeyHelp(*) {
         if ((k := H(row[1], row[2])) != "")
             t .= Nice(k) "`t" row[3] "`n"
     t .= Nice(H("MouseBroadcast", "XButton1")) "`tOne mirrored click"
-    MsgBox(t "`n`n" APP " " APP_VERSION, APP " - Hotkeys", "Iconi")
+    if (MsgBox(t "`n`n" APP " " APP_VERSION "`n`nOpen the online guide?", APP " - Hotkeys", "YesNo Iconi") = "Yes")
+        OpenGuide()
+}
+
+; The full guide, kept in step with README.md, is the repository's wiki.
+OpenGuide(*) {
+    try Run("https://github.com/" DEFAULT_UPDATE_REPO "/wiki")
+    catch {
+        guide := A_ScriptDir "\README.html"
+        if FileExist(guide)
+            try Run(guide)
+    }
 }
 
 ; --------------------------- Status / panel ---------------------------

@@ -1,0 +1,56 @@
+# Keeps the GitHub wiki in step with README.md. The guide is written once, in
+# README.md; installer/make_wiki.py splits it into wiki pages and this workflow
+# pushes them to the wiki whenever the README changes.
+#
+# GitHub only creates a repository's wiki when its first page is saved in the
+# web page, so the very first time: open the Wiki tab, click "Create the first
+# page", save it (any text), then run this workflow from the Actions tab.
+name: Update wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "installer/make_wiki.py"
+      - ".github/workflows/wiki.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the wiki pages from README.md
+        run: python3 installer/make_wiki.py README.md wiki-out "$GITHUB_REPOSITORY"
+
+      - name: Publish to the wiki
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          url="https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git"
+          if ! git clone --depth 1 "$url" wiki-repo; then
+            echo "::warning title=The wiki isn't set up yet::Open the repository's Wiki tab, click 'Create the first page' and save it, then run the 'Update wiki' workflow again."
+            exit 0
+          fi
+          rsync -a --delete --exclude .git wiki-out/ wiki-repo/
+          cd wiki-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "The wiki is already up to date."
+            exit 0
+          fi
+          git commit -m "Update the wiki from README.md (${GITHUB_SHA::7})"
+          git push
+          echo "Wiki updated: https://github.com/${GITHUB_REPOSITORY}/wiki"
