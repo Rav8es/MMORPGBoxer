@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "EQ Boxer Pro"
-global APP_VERSION := "1.1.4"
+global APP_VERSION := "1.1.5"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/BoxerPro"
 ; installed copies ship an icon next to the script
@@ -2010,6 +2010,12 @@ SwitchBroadcast(k) {
     SendInput(keys)               ; the client you're playing in
     delay := ToInt(Cfg("Broadcast", "SwitchDelay", "20"), 20)
     Switching := true
+    ; Stay in that client a moment before hopping away: EverQuest throws away
+    ; a key it hasn't read yet when its window loses focus, so without this
+    ; the client you pressed the key in could miss it (= Sit/Stand in slot 1).
+    stay := ToInt(Cfg("Broadcast", "StayDelay", "50"), 50)
+    if (stay > 0 && SlotOf(prev))
+        Sleep(stay)
     sent := 1, missed := 0
     for id in Slots {
         if (!id || id = prev)
@@ -2082,9 +2088,16 @@ MirrorClickFrom(src, button, clickSource := false) {
     if (sw <= 0 || sh <= 0 || pt.x < sx || pt.y < sy || pt.x >= sx + sw || pt.y >= sy + sh)
         return
     rx := (pt.x - sx) / sw, ry := (pt.y - sy) / sh
-    if clickSource
-        Click(button)
     Switching := true
+    if clickSource {
+        GameClick(pt.x, pt.y, button)    ; a click the game notices, then a short wait
+    } else {
+        ; your own click just happened here: let this client read it before
+        ; another window takes focus (EverQuest drops input it hasn't read)
+        stay := ToInt(Cfg("Mirror", "StayDelay", "50"), 50)
+        if (stay > 0)
+            Sleep(stay)
+    }
     done := 0
     for id in Slots {
         if (!id || id = src)
@@ -3506,6 +3519,8 @@ MarkerColor=FFFF00
 ClickDelay=60
 ; Milliseconds the button is held down
 HoldTime=40
+; Milliseconds to stay in the client you clicked in before hopping to the others
+StayDelay=50
 ; Show "Mirrored ... to N client(s)" after each mirrored click (1/0)
 ShowFeedback=1
 
@@ -3563,6 +3578,9 @@ Keys=1,2,3,4,5,6,7,8,9,0,-,=
 Method=Switch
 ; Milliseconds to wait in each client before/after the key (Switch method)
 SwitchDelay=20
+; Milliseconds to stay in the client you pressed the key in before hopping to
+; the others. Raise it (80-120) if that client sometimes misses the key.
+StayDelay=50
 ; Show a short message after each broadcast key (1/0)
 ShowFeedback=1
 

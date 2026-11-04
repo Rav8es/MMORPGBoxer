@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.5
+- Fix: with broadcast on, the client you pressed a key in could miss it while the other clients got it (for example `=` Sit/Stand sat slots 2 and 3 but not slot 1). The app hopped to the next client before EverQuest had read the key, and EverQuest drops keys it hasn't read when it loses focus. It now waits briefly first (`[Broadcast] StayDelay`, default 50 ms).
+- The same wait applies to your own click in mirror mode (`[Mirror] StayDelay`), and the one-click mirror button (mouse button 4) now clicks the client under the pointer the same way it clicks the others.
+
 ## 1.1.4
 - Fix: title bars stayed visible on slots whose title bar is on screen (for example the bottom slots in "Top + 2 Bottom"), even though they were clipped. On Windows 10 and 11 the title bar is drawn by the Desktop Window Manager, which ignores a clip set by another program. EQ Boxer Pro now tells Windows not to draw the frame of each client it hides; the window's size and picture don't change.
 - If Windows refuses that for a client, that client's title bar is removed instead.

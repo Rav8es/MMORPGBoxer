@@ -326,7 +326,7 @@ Broadcast only reacts while an **EverQuest window is active**. Pressing `1` in N
 ### 9.2 What happens when you press a key (Switch method, default)
 ```
 You press 1 in slot 1
-  -> slot 1 presses 1
+  -> slot 1 presses 1, and the app waits StayDelay ms so slot 1 reads it
   -> app switches to slot 2, waits SwitchDelay ms, presses 1
   -> app switches to slot 3, waits SwitchDelay ms, presses 1
   -> app switches to slot 4, waits SwitchDelay ms, presses 1
@@ -370,6 +370,7 @@ The Switch method presses keys once, so **holding W to run is not copied**. To m
 | Keys do nothing at all in EQ, and no "Broadcast 1 -> …" message appears | EverQuest runs as administrator, so EQ Boxer must too. Leave `RunAsAdmin=1` and accept the Windows prompt when the app starts. The startup message says **(admin)** when this is right. |
 | No **BROADCAST ON** label | Click into an EQ window first, then press Ctrl+Alt+B. Check that the app isn't paused (Ctrl+Alt+P). |
 | Label shows, but other clients don't react | Make sure `Method=Switch` (or that the line is missing). Raise `SwitchDelay` to 60–100 and reload. |
+| The other clients react, but the client you pressed the key in doesn't (for example `=` Sit/Stand only sits slots 2 and 3) | That client lost focus before it read the key. Raise `StayDelay` in `[Broadcast]` (default 50) to 80–120 and reload. |
 | Only some clients react | Those clients aren't in a slot. Open the control panel and check that each one shows "running". If not, click into it and press Ctrl+Alt+F<n> to assign it. |
 | The key reaches the wrong hotbar button | That client has a different hotbar setup or page. Broadcast presses the same *key*, not the same *spell*. |
 | Screen flickers when broadcasting | That's normal with the Switch method, since each client is brought forward briefly. |
@@ -391,7 +392,7 @@ Things to know:
 - Dragging (moving items, resizing windows) is not mirrored, only clicks.
 - Turn it off before rearranging your UI or typing in chat.
 - **If the markers move but the other clients don't click:** raise `ClickDelay` in `[Mirror]` (default 60 ms; try 100–150). Also raise `MaxBGFPS` in eqclient.ini to 30–60 so background clients react faster (see [9.3](#93-making-switching-faster)). After each mirrored click the app shows **"Mirrored Left click to N client(s)"**. If N is 0, the other clients couldn't be brought to the front, so check the app is running as administrator.
-- `[Mirror]` settings: `MarkerColor`, `ClickDelay`, `HoldTime` (how long the button is held, default 40 ms), `ShowFeedback`.
+- `[Mirror]` settings: `MarkerColor`, `ClickDelay`, `HoldTime` (how long the button is held, default 40 ms), `StayDelay` (how long to stay in the client you clicked in before hopping away, default 50 ms), `ShowFeedback`.
 
 ### Mouse button 4 (one-off mirrored click)
 Press **mouse button 4** (the back button on the side of most mice) over a client to make one mirrored left-click there and in every other client, without turning mirror mode on. Change or disable it with `MouseBroadcast=` in `[Hotkeys]` (leave it empty to disable).
@@ -537,7 +538,7 @@ Keep comments on their own lines. A `;` after a value becomes part of the value.
 `Repo` (GitHub `owner/name`, empty = built-in), `CheckOnStart` (1/0), `SkipVersion`.
 
 ### [Mirror]
-`MarkerColor` (RRGGBB), `ClickDelay` (ms to let a client notice the pointer before clicking, default 60), `HoldTime` (ms the button is held, default 40), `ShowFeedback` (1/0). Clickable views use the same click settings.
+`MarkerColor` (RRGGBB), `ClickDelay` (ms to let a client notice the pointer before clicking, default 60), `HoldTime` (ms the button is held, default 40), `StayDelay` (ms to stay in the client you clicked in before hopping to the others, default 50), `ShowFeedback` (1/0). Clickable views use the same click settings.
 
 ### [Highlight]
 `Enabled` (1/0), `Color` (RRGGBB), `Thickness` (pixels): the frame around the active client.
@@ -552,7 +553,7 @@ Your own layouts: `slot=x,y,width,height`, in pixels from the monitor's top-left
 `Main` and `Small1`–`Small7` as `x,y,width,height`, relative to the monitor's top-left.
 
 ### [Broadcast]
-`Mode` (Whitelist/Blacklist), `Keys`, `Method` (Switch/Send), `SwitchDelay`, `ShowFeedback` (1 = show "Broadcast 1 -> 4 client(s)" after each key).
+`Mode` (Whitelist/Blacklist), `Keys`, `Method` (Switch/Send), `SwitchDelay`, `StayDelay` (ms to stay in the client you pressed the key in before hopping to the others, default 50), `ShowFeedback` (1 = show "Broadcast 1 -> 4 client(s)" after each key).
 
 ### [Hotkeys]
 See the [hotkey reference](#5-hotkey-reference). Leave a value empty to disable that hotkey.
