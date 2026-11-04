@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.2
+- Fix (dark mode): the selected layout in the Layouts window and the Setup Wizard was a white bar with white text. Those lists now use the same blue selection as the other lists.
+- Fix (dark mode): column headings in lists (Slot, Character, Account...) were dark grey on dark grey. They're light now.
+
 ## 1.6.1
 - Fix: 1.6.0 wouldn't start ("This global variable has not been assigned a value: BuiltinLayouts"). The list of built-in layouts was created after the layouts were loaded.
 - Every build is now also checked for start-up code that uses a setting before it's created.

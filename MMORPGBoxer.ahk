@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "MMORPG Boxer"
-global APP_VERSION := "1.6.1"
+global APP_VERSION := "1.6.2"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/MMORPGBoxer"
 global OLD_UPDATE_REPO := "Rav8es/BoxerPro"     ; its name before the rename
@@ -185,6 +185,7 @@ global Hints := Map()         ; control hwnd -> grey hint text
 global NoTheme := Map()       ; control hwnd -> keeps its own colours
 global ThemedGuis := []       ; windows that follow the appearance setting
 global LVDrawn := Map()       ; ListViews that draw their own selection colours
+global DarkNow := false       ; dark appearance currently applied
 global LW := 0                ; Layouts window
 
 ; ------------------------------ Hotkeys -------------------------------
@@ -2200,8 +2201,10 @@ ShowLayouts(*) {
         g.SetFont("s10", "Segoe UI")
         LW := {gui: g, rects: []}
         Hint(g.AddText("xm w790", "Pick a layout to see where each of your slots goes. Use This Layout switches to it straight away (Ctrl+Alt+S steps to the next one)."))
-        LW.list := g.AddListBox("xm y+10 w240 r15 Section", LayoutNames())
-        LW.list.OnEvent("Change", (*) => LayoutsShow())
+        LW.list := g.AddListView("xm y+10 w240 r15 Section -Hdr -Multi", ["Layout"])
+        LW.list.ModifyCol(1, 214)
+        LVFill(LW.list, LayoutNames(), LayoutIndex(Layout))
+        LW.list.OnEvent("ItemSelect", (lv, row, sel) => sel ? LayoutsShow() : 0)
         LW.list.OnEvent("DoubleClick", (*) => LayoutsUse())
         LW.box := Keep(g.AddText("x+14 ys w536 h300 Border Background101010"))
         g.SetFont("s11 w600")
@@ -2223,6 +2226,23 @@ ShowLayouts(*) {
     LayoutsRefresh(Layout)
 }
 
+; Fill a one-column list and select row sel.
+LVFill(lv, items, sel := 1) {
+    lv.Opt("-Redraw")
+    lv.Delete()
+    for x in items
+        lv.Add(, x)
+    if (sel >= 1 && sel <= items.Length)
+        lv.Modify(sel, "Select Focus Vis")
+    lv.Opt("+Redraw")
+}
+
+; text of a list's selected row ("" if none)
+LVSelText(lv) {
+    row := lv.GetNext(0)
+    return row ? lv.GetText(row) : ""
+}
+
 ; position of a layout in LayoutNames() (1 if it isn't there)
 LayoutIndex(name) {
     for i, x in LayoutNames()
@@ -2237,15 +2257,13 @@ LayoutsRefresh(select := "") {
     if !LayoutsVisible()
         return
     if (select = "")
-        select := LW.list.Text != "" ? LW.list.Text : Layout
-    LW.list.Delete()
-    LW.list.Add(LayoutNames())
-    LW.list.Choose(LayoutIndex(select))
+        select := LVSelText(LW.list) != "" ? LVSelText(LW.list) : Layout
+    LVFill(LW.list, LayoutNames(), LayoutIndex(select))
     LayoutsShow()
 }
 
 LayoutsShow() {
-    name := LW.list.Text
+    name := LVSelText(LW.list)
     if (name = "")
         return
     LayoutArea(&L, &T, &W, &H)
@@ -2268,7 +2286,7 @@ LayoutsShow() {
 }
 
 LayoutsUse() {
-    name := LW.list.Text
+    name := LVSelText(LW.list)
     if (name != "")
         SetLayout(name)
     LayoutsRefresh(name)
@@ -2280,7 +2298,7 @@ LayoutsSave() {
 }
 
 LayoutsDelete() {
-    name := LW.list.Text
+    name := LVSelText(LW.list)
     if (name = "" || HasVal(BuiltinLayouts, name))
         return
     if (MsgBox("Delete the layout '" name "'?", APP, "YesNo Icon? Owner" LW.gui.Hwnd) != "Yes")
@@ -3651,7 +3669,7 @@ AllowDark(hwnd, on) {
 ; white text, others dark (the theme's own highlight was light, leaving the
 ; light text unreadable).
 LVDarkDraw(ctrl, lParam) {
-    if !IsDark()
+    if !DarkNow
         return
     x64 := (A_PtrSize = 8)
     stage := NumGet(lParam, x64 ? 24 : 12, "UInt")
@@ -3666,6 +3684,23 @@ LVDarkDraw(ctrl, lParam) {
     NumPut("UInt", RGBtoBGR(sel ? "FFFFFF" : "E6E6E6"), lParam, x64 ? 80 : 48)   ; text
     NumPut("UInt", RGBtoBGR(sel ? "2F5A8C" : "2C2C2C"), lParam, x64 ? 84 : 52)   ; background
     return 0x2                                       ; CDRF_NEWFONT
+}
+
+; The column headers' text: the dark header theme leaves it dark grey, so
+; light text is set while each header item is drawn. (The header tells the
+; list, not the window, so the list is subclassed to hear it.)
+LVSubclassProc(hwnd, msg, wParam, lParam, id, ref) {
+    if (msg = 0x4E && DarkNow && NumGet(lParam, A_PtrSize * 2, "Int") = -12) {     ; WM_NOTIFY, NM_CUSTOMDRAW
+        x64 := (A_PtrSize = 8)
+        stage := NumGet(lParam, x64 ? 24 : 12, "UInt")
+        if (stage = 1)                                       ; CDDS_PREPAINT
+            return 0x20                                      ; CDRF_NOTIFYITEMDRAW
+        if (stage = 0x10001) {                               ; CDDS_ITEMPREPAINT
+            DllCall("gdi32\SetTextColor", "Ptr", NumGet(lParam, x64 ? 32 : 16, "Ptr"), "UInt", 0xE6E6E6)
+            return 0
+        }
+    }
+    return DllCall("comctl32\DefSubclassProc", "Ptr", hwnd, "UInt", msg, "UPtr", wParam, "Ptr", lParam, "Ptr")
 }
 
 RGBtoBGR(hex) {
@@ -3708,16 +3743,20 @@ ThemeCtrl(c, p) {
             SendMessage(0x1024, 0, tx, c)                                 ; LVM_SETTEXTCOLOR
             if !LVDrawn.Has(c.Hwnd) {
                 LVDrawn[c.Hwnd] := true
-                c.OnNotify(-12, LVDarkDraw)                               ; NM_CUSTOMDRAW
+                c.OnNotify(-12, LVDarkDraw)                               ; NM_CUSTOMDRAW (rows)
+                static subProc := CallbackCreate(LVSubclassProc, "F", 6)
+                DllCall("comctl32\SetWindowSubclass", "Ptr", c.Hwnd, "Ptr", subProc, "UPtr", 1, "UPtr", 0)
             }
     }
 }
 
 ; Style one window (and remember it, so it follows later changes).
 ThemeGui(g) {
+    global DarkNow
     if !HasVal(ThemedGuis, g)
         ThemedGuis.Push(g)
     p := Palette()
+    DarkNow := p.dark
     AllowDark(g.Hwnd, p.dark)
     try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", g.Hwnd, "UInt", 20, "Int*", p.dark ? 1 : 0, "UInt", 4)  ; dark title bar
     g.BackColor := p.bg
@@ -3999,9 +4038,10 @@ ShowWizard(*) {
 
     ; ---- page 4: layout ----
     P(4, g.AddText("xs ys w620", "How should the windows be arranged on your screen? Pick a layout to see where each slot goes."))
-    Wiz.layout := P(4, g.AddListBox("xs y+8 w220 r13", LayoutNames()))
-    Wiz.layout.Choose(LayoutIndex(Layout))
-    Wiz.layout.OnEvent("Change", (*) => WizPreview())
+    Wiz.layout := P(4, g.AddListView("xs y+8 w220 r12 -Hdr -Multi", ["Layout"]))
+    Wiz.layout.ModifyCol(1, 196)
+    LVFill(Wiz.layout, LayoutNames(), LayoutIndex(Layout))
+    Wiz.layout.OnEvent("ItemSelect", (lv, row, sel) => sel ? WizPreview() : 0)
     Wiz.box := P(4, Keep(g.AddText("x+12 yp w388 h218 Border Background101010")))
     Wiz.desc := P(4, g.AddText("xp yp+226 w388 h84", ""))
     for col in SlotColours()
@@ -4140,7 +4180,7 @@ WizCheckPath(*) {
 WizPreview() {
     if (!Wiz || Wiz.page != 4)
         return
-    name := Wiz.layout.Text
+    name := LVSelText(Wiz.layout)
     cnt := Integer(Wiz.count.Text)
     LayoutArea(&L, &T, &W, &H)
     cells := []
@@ -4190,7 +4230,7 @@ WizSummary() {
             . (r.ign.Value != "" ? "   in game " r.ign.Value : "")
             . (r.acct.Value != "" ? "   account " r.acct.Value : "") "   " r.res.Text "`r`n"
     }
-    t .= "Layout:  " Wiz.layout.Text (Wiz.work.Value ? ", above the taskbar" : ", full screen")
+    t .= "Layout:  " LVSelText(Wiz.layout) (Wiz.work.Value ? ", above the taskbar" : ", full screen")
         . (Wiz.borders.Value ? ", no borders" : ", with borders") "`r`n"
     yn(v) => v ? "on" : "off"
     t .= "Separate settings per character:  " yn(Wiz.prof.Value) "`r`n"
@@ -4213,7 +4253,7 @@ WizFinish() {
     W(sec, key, val) => IniWrite(val, CFG_FILE, sec, key)
     W("General", "EQPath", Trim(Wiz.path.Value))
     W("General", "Slots", cnt)
-    W("General", "Layout", Wiz.layout.Text)
+    W("General", "Layout", LVSelText(Wiz.layout) != "" ? LVSelText(Wiz.layout) : Layout)
     W("General", "UseWorkArea", Wiz.work.Value ? 1 : 0)
     W("General", "HideBorders", Wiz.borders.Value ? 1 : 0)
     W("General", "ShowPanelOnStart", Wiz.panel.Value ? 1 : 0)
