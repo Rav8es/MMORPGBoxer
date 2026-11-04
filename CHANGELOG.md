@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.4
+- Fix: title bars stayed visible on slots whose title bar is on screen (for example the bottom slots in "Top + 2 Bottom"), even though they were clipped. On Windows 10 and 11 the title bar is drawn by the Desktop Window Manager, which ignores a clip set by another program. EQ Boxer Pro now tells Windows not to draw the frame of each client it hides; the window's size and picture don't change.
+- If Windows refuses that for a client, that client's title bar is removed instead.
+- The window log and Diagnostics show "(drawn by DWM)" when Windows is still drawing a client's title bar.
+
 ## 1.1.3
 - Fix: a client's title bar showed while it was loading (for example slot 2's title bar across the bottom of slot 1 during Launch All). It's now hidden as soon as the window appears, without moving or resizing it.
 - The clip now follows a client when EverQuest resizes or redraws its window, instead of counting that as the clip being lost.

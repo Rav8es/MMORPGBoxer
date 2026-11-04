@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "EQ Boxer Pro"
-global APP_VERSION := "1.1.3"
+global APP_VERSION := "1.1.4"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/BoxerPro"
 ; installed copies ship an icon next to the script
@@ -473,8 +473,9 @@ WinDesc(id) {
         WinGetClientPos(&cx, &cy, &cw, &ch, "ahk_id " id)
         st := WinGetStyle("ahk_id " id)
         rk := RegionKey(id)
-        return Format("window {},{} {}x{} | picture {},{} {}x{} | {} | clip {}", x, y, w, h, cx, cy, cw, ch
-            , (st & 0xC00000) ? "title bar" : "no title bar", rk = "" ? "none" : rk)
+        return Format("window {},{} {}x{} | picture {},{} {}x{} | {}{} | clip {}", x, y, w, h, cx, cy, cw, ch
+            , (st & 0xC00000) ? "title bar" : "no title bar", ((st & 0xC00000) && DwmFrameOn(id)) ? " (drawn by DWM)" : ""
+            , rk = "" ? "none" : rk)
     }
     return "(window gone)"
 }
@@ -1013,17 +1014,48 @@ RegionKey(id) {
     return l "," tp "," (NumGet(rc, 8, "Int") - l) "," (NumGet(rc, 12, "Int") - tp)
 }
 
-ClipIsRight(id) => (RegionKey(id) = ClipKey(id))
+; Windows 10/11 don't draw a window's title bar inside the window: the
+; Desktop Window Manager (DWM) draws it on top, and it ignores a clip set by
+; another program (EQBoxer.log: clip in place, title bar still showing). So
+; DWM is told not to draw this window's frame; Windows then draws a plain
+; frame inside the window, which the clip does hide. This doesn't change the
+; window's size or picture area, so EverQuest doesn't react to it.
+DwmFrameOn(id) {
+    on := 0
+    hr := DllCall("dwmapi\DwmGetWindowAttribute", "Ptr", id, "UInt", 1, "Int*", &on, "UInt", 4, "Int")   ; DWMWA_NCRENDERING_ENABLED
+    return (hr = 0 && on)
+}
+
+; policy: 0 = Windows decides (normal), 1 = DWM doesn't draw the frame
+SetDwmFrame(id, policy) {
+    return DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", id, "UInt", 2, "Int*", policy, "UInt", 4, "Int")   ; DWMWA_NCRENDERING_POLICY
+}
+
+ClipIsRight(id) => (RegionKey(id) = ClipKey(id) && !DwmFrameOn(id))
 
 ClipToPicture(id) {
-    static failLogged := Map()
-    if KeepFrame.Has(id)
+    static failLogged := Map(), frameTries := Map()
+    if (KeepFrame.Has(id) || StripFallback.Has(id))
         return false
     try {
         key := ClipKey(id)
         p := StrSplit(key, ",")
         if (p[3] < 64 || p[4] < 64)                ; no real picture yet: an empty clip would hide the window
             return false
+        if DwmFrameOn(id) {
+            hr := SetDwmFrame(id, 1)
+            tries := frameTries.Has(id) ? frameTries[id] + 1 : 1
+            frameTries[id] := tries
+            if (hr != 0 || (tries > 10 && DwmFrameOn(id))) {
+                ; Windows won't let us stop DWM drawing this title bar, so a
+                ; clip can't hide it: remove the title bar for this client.
+                WriteLog("slot " SlotOf(id) ": Windows keeps drawing the title bar over the clip (DwmSetWindowAttribute=" Format("0x{:08X}", hr & 0xFFFFFFFF) ") - removing this client's title bar instead - " WinDesc(id))
+                UseStripFor(id)
+                return false
+            }
+            if (tries = 1)
+                WriteLog("slot " SlotOf(id) ": told Windows not to draw the title bar over the picture")
+        }
         rgn := DllCall("CreateRectRgn", "Int", p[1], "Int", p[2], "Int", p[1] + p[3], "Int", p[2] + p[4], "Ptr")
         ok := DllCall("SetWindowRgn", "Ptr", id, "Ptr", rgn, "Int", 1)    ; Windows owns rgn now
         err := A_LastError
@@ -1036,6 +1068,17 @@ ClipToPicture(id) {
         }
     }
     return false
+}
+
+; Switch one client from clipping to removing its title bar.
+UseStripFor(id) {
+    StripFallback[id] := true
+    ClipFor.Delete(id)
+    try DllCall("SetWindowRgn", "Ptr", id, "Ptr", 0, "Int", 1)
+    try SetDwmFrame(id, 0)
+    Placed.Delete(id)
+    Unmanaged.Delete(id)
+    SetTimer(Arrange, -200)
 }
 
 ; Hides the title bar of every client several times a second:
@@ -1056,7 +1099,7 @@ ClipGuard() {
             if (WinGetMinMax("ahk_id " id) = -1)          ; minimized
                 continue
             have := RegionKey(id)
-            if (have = ClipKey(id))
+            if (have = ClipKey(id) && !DwmFrameOn(id))
                 continue
             if (!ClipFor.Has(id)) {
                 if ClipToPicture(id)
@@ -1082,12 +1125,7 @@ ClipGuard() {
                 list.RemoveAt(1)
             if (list.Length > 6) {
                 WriteLog("slot " n ": the clip keeps disappearing - switching this client to removing its title bar instead - " WinDesc(id))
-                StripFallback[id] := true
-                ClipFor.Delete(id)
-                DllCall("SetWindowRgn", "Ptr", id, "Ptr", 0, "Int", 1)
-                Placed.Delete(id)
-                Unmanaged.Delete(id)
-                SetTimer(Arrange, -200)
+                UseStripFor(id)
                 continue
             }
             WriteLog("slot " n ": clip was gone - putting it back - " WinDesc(id))
@@ -1149,7 +1187,7 @@ PlaceClipped(id, x, y, w, h) {
 ; adjusts its window a moment after a resize).
 FollowUpClip(id, x, y, w, h, tries, *) {
     static lastSeen := Map()
-    if !WinExist("ahk_id " id)
+    if (!WinExist("ahk_id " id) || StripFallback.Has(id))
         return
     n := SlotOf(id)
     desc := WinDesc(id)
@@ -1589,6 +1627,7 @@ RestoreBorders(*) {
     for id in Slots
         if id {
             KeepFrame[id] := true
+            try SetDwmFrame(id, 0)
             try DllCall("SetWindowRgn", "Ptr", id, "Ptr", 0, "Int", 1)
             ClipFor.Delete(id)
             try WinSetStyle("+0xC40000", "ahk_id " id)

@@ -298,7 +298,7 @@ The active client sits in a large **main** region (2880×1620 by default) and th
 ### Borders
 `HideBorders=1` hides title bars and borders so clients sit edge to edge. **Ctrl+Alt+U** shows them again until the next Arrange (**Ctrl+Alt+G**).
 
-By default (`BorderMode=Clip`) the app doesn't remove EverQuest's title bar. EverQuest keeps putting it back, which squashes its picture. Instead, the app places each window so its **picture** sits exactly on the slot, and tells Windows to show only the picture area. The title bar and border still exist for EverQuest, but they're invisible, can't be clicked, and don't cover neighbouring windows. `BorderMode=Strip` goes back to removing the title bar.
+By default (`BorderMode=Clip`) the app doesn't remove EverQuest's title bar. EverQuest keeps putting it back, which squashes its picture. Instead, the app places each window so its **picture** sits exactly on the slot, and tells Windows to show only the picture area. The title bar and border still exist for EverQuest, but they're invisible, can't be clicked, and don't cover neighbouring windows. On Windows 10 and 11 the title bar is normally drawn by the Desktop Window Manager on top of the window, where a clip can't reach it, so the app also tells Windows not to draw each client's frame that way. If Windows refuses for a client, the app removes that client's title bar instead. `BorderMode=Strip` goes back to removing the title bar for every client.
 
 ### Active client highlight
 A red frame is drawn around the client you're playing in, so you always know which slot has the keyboard. It's click-through, so it never blocks the game. Set it in `[Highlight]`:
