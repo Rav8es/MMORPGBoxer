@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "MMORPG Boxer"
-global APP_VERSION := "1.7.0"
+global APP_VERSION := "1.8.0"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/MMORPGBoxer"
 global OLD_UPDATE_REPO := "Rav8es/BoxerPro"     ; its name before the rename
@@ -329,26 +329,79 @@ Status(APP " ready" (A_IsAdmin ? " (admin)" : " (NOT admin - broadcast may not w
 ; rules allow. together = features where one key press or click acts in
 ; several clients (broadcast, mirror mode, team commands, key maps).
 GameInfo(id) {
-    if (id = "MonstersAndMemories")
-        return {id: id, name: "Monsters & Memories", exe: "mnm.exe", folder: "C:\MnM"
-            , launchers: ["MnMLauncher.exe", "mnm_launcher.exe"], maxSlots: 3, together: false
-            , eqIni: false, loginArg: false, settle: 10000
-            , rules: "Monsters & Memories allows boxing only on its 3-box server (Nunavoth), and every character must be played by hand. "
-                . "So for this game MMORPG Boxer leaves out broadcasting, mirror mode, team commands and key maps, and allows at most 3 slots."}
+    ; Fields: exe (the game client), folder (where to look by default),
+    ; launchers (started instead of the client when the game logs in through
+    ; its own launcher), maxSlots, defSlots, defLayout, together (one key
+    ; press or click may act in several clients: broadcast, mirror, team
+    ; commands, key maps), views (clickable views allowed), eqIni and
+    ; loginArg (EverQuest's eqclient.ini features and /login:), titles
+    ; (MMORPG Boxer may rename the windows "EQ<slot> - <name>"), settle (ms),
+    ; why (shown when a feature is left out) and rules (wizard page 1).
+    switch id {
+        case "MonstersAndMemories":
+            return {id: id, name: "Monsters & Memories", exe: "mnm.exe", folder: "C:\MnM"
+                , launchers: ["MnMLauncher.exe", "mnm_launcher.exe"], maxSlots: 3, defSlots: 3, defLayout: "Top + 2 Bottom"
+                , together: false, views: true, eqIni: false, loginArg: false, titles: true, settle: 10000
+                , why: "every character must be played by hand"
+                , hint: "Boxing: 3-box server only, every character by hand."
+                , rules: "Monsters & Memories allows boxing only on its 3-box server (Nunavoth), and every character must be played by hand. "
+                    . "So for this game MMORPG Boxer leaves out broadcasting, mirror mode, team commands and key maps, and allows at most 3 slots."}
+        case "EverQuest2":
+            return {id: id, name: "EverQuest II", exe: "EverQuest2.exe"
+                , folder: "C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest II"
+                , launchers: ["LaunchPad.exe"], maxSlots: 8, defSlots: 4, defLayout: "Grid"
+                , together: false, views: true, eqIni: false, loginArg: false, titles: true, settle: 15000
+                , why: "Daybreak's policy for EverQuest II doesn't allow software to send one command to several characters"
+                , hint: "Boxing allowed; one key = one character."
+                , rules: "EverQuest II allows boxing, but Daybreak's stated policy is that software may not issue simultaneous commands to several characters. "
+                    . "So for EverQuest II MMORPG Boxer leaves out broadcasting, mirror mode, team commands and key maps. Layouts, switching, clickable views, sound and CPU settings work as usual."}
+        case "EVEOnline":
+            return {id: id, name: "EVE Online", exe: "exefile.exe", folder: EnvGet("LOCALAPPDATA") "\eve-online"
+                , launchers: ["eve-online.exe", "evelauncher.exe"], maxSlots: 8, defSlots: 4, defLayout: "Grid"
+                , together: false, views: false, eqIni: false, loginArg: false, titles: false, settle: 10000
+                , why: "CCP bans input broadcasting and multiplexing, and overlays that act in other clients"
+                , hint: "Window layout and switching only."
+                , rules: "EVE Online allows multiboxing, but CCP bans input broadcasting and multiplexing, and overlays that use parts of other clients to act in them. "
+                    . "So for EVE MMORPG Boxer leaves out broadcasting, mirror mode, team commands, key maps and clickable views. Arranging, switching and sound work as usual (CCP allows window positions and arrangements)."}
+    }
     return {id: "EverQuest", name: "EverQuest", exe: "eqgame.exe"
         , folder: "C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest"
-        , launchers: [], maxSlots: 8, together: true, eqIni: true, loginArg: true, settle: 15000, rules: ""}
+        , launchers: [], maxSlots: 8, defSlots: 4, defLayout: "Grid"
+        , together: true, views: true, eqIni: true, loginArg: true, titles: true, settle: 15000
+        , why: "", hint: "Each game keeps its own setup.", rules: ""}
 }
 
-GameNames() => ["EverQuest", "Monsters & Memories"]
+GameIds() => ["EverQuest", "EverQuest2", "MonstersAndMemories", "EVEOnline"]
 
-GameIdOf(name) => InStr(name, "Monsters") ? "MonstersAndMemories" : "EverQuest"
+GameNames() {
+    names := []
+    for id in GameIds()
+        names.Push(GameInfo(id).name)
+    return names
+}
+
+; game id from its name (as shown, or as saved in [General] Game)
+GameIdOf(name) {
+    for id in GameIds()
+        if (name = id || name = GameInfo(id).name)
+            return id
+    return InStr(name, "Monsters") ? "MonstersAndMemories" : "EverQuest"
+}
+
+GameIndex() {
+    for i, id in GameIds()
+        if (id = GAME)
+            return i
+    return 1
+}
 
 ; Status message for a feature this game's rules don't allow; true if blocked.
-NotForGame(what) {
-    if GameDef.together
+NotForGame(what, allowed := "") {
+    if (allowed = "")
+        allowed := GameDef.together
+    if allowed
         return false
-    Status(what " isn't available for " GameDef.name ": every character must be played by hand.", 5000)
+    Status(what " isn't available for " GameDef.name ": " GameDef.why ".", 6000)
     return true
 }
 
@@ -360,8 +413,8 @@ WriteGameDefaults() {
     W("General", "EQPath", GameDef.folder)
     W("General", "EQExe", GameDef.exe)
     W("General", "LaunchArgs", "")
-    W("General", "Slots", GameDef.maxSlots)
-    W("General", "Layout", "Top + 2 Bottom")
+    W("General", "Slots", GameDef.defSlots)
+    W("General", "Layout", GameDef.defLayout)
     W("General", "SettleTime", GameDef.settle)
     W("General", "PrepareIni", 0)
     W("Profiles", "PerCharacter", 0)
@@ -533,6 +586,8 @@ RefreshSlots() {
 }
 
 UpdateTitles() {
+    if !GameDef.titles
+        return                  ; keep the game's own window titles
     for n, id in Slots {
         if !id
             continue
@@ -3121,7 +3176,7 @@ LoadVFX() {
                 , Opacity: (p.Length >= 4 && IsInteger(p[4])) ? Integer(p[4]) : 255
                 , Gui: 0, Thumb: 0})
     }
-    VFXOn := Cfg("VFX", "StartOn", "0") = "1"
+    VFXOn := GameDef.views && Cfg("VFX", "StartOn", "0") = "1"
 }
 
 DestroyVFX(v) {
@@ -3302,6 +3357,8 @@ VfxClickAt(v, cx, cy, button) {
 
 ToggleVFX(*) {
     global VFXOn
+    if (!VFXOn && NotForGame("Clickable views", GameDef.views))
+        return
     if (VFX.Length = 0) {
         Status("No views yet - open Clickable Views (" NiceKey(Cfg("Hotkeys", "ViewManager", "^!e")) ") to make one")
         return
@@ -3411,6 +3468,8 @@ SaveView(v) {
 
 CreateView(*) {
     global VFXOn
+    if NotForGame("Clickable views", GameDef.views)
+        return
     s := PickViewSource("Step 1 of 2: drag a box around the area to copy (e.g. slot 2's hotbar)")
     if !s
         return
@@ -3458,6 +3517,8 @@ DeleteView(*) {
 ; ------------------------- Clickable Views window -------------------------
 ShowViews(*) {
     global VM
+    if NotForGame("Clickable views", GameDef.views)
+        return
     g := 0
     VBtn(opts, label, fn, tip) {
         btn := g.AddButton(opts, label)
@@ -4128,8 +4189,8 @@ ShowWizard(*) {
     P(1, g.AddText("xs ys w620", "This wizard sets up MMORPG Boxer in a few steps. You can run it again any time from the control panel, the tray menu, or Ctrl+Alt+W."))
     P(1, g.AddText("xs y+12 w60 h28 0x200", "Game:"))
     Wiz.game := P(1, g.AddDropDownList("x+4 yp w240", GameNames()))
-    Wiz.game.Choose(GAME = "EverQuest" ? 1 : 2)
-    Wiz.game.OnEvent("Change", (c, *) => (SetGame(c.Text) = false ? c.Choose(GAME = "EverQuest" ? 1 : 2) : 0))
+    Wiz.game.Choose(GameIndex())
+    Wiz.game.OnEvent("Change", (c, *) => (SetGame(c.Text) = false ? c.Choose(GameIndex()) : 0))
     P(1, Hint(g.AddText("x+10 yp w300 h28 0x200 cGray", "Each game keeps its own setup.")))
     if (GameDef.rules != "")
         P(1, g.AddText("xs y+8 w620 cB8860B", GameDef.rules))
@@ -4227,7 +4288,7 @@ ShowWizard(*) {
         P(5, g.AddText("xs y+16 w620", "Team commands (they use the in-game names from step 3):"))
         P(5, Hint(g.AddText("xs y+4 w620 cGray", "Ctrl+Alt+F  everyone follows you      Ctrl+Alt+X  stop following      Ctrl+Alt+T  everyone assists you`nMore (follow in a line, attack, back off, sit, stand) on the toolbar's Team button.")))
     } else
-        P(5, Hint(g.AddText("xs y+16 w620 cGray", "No team commands, broadcasting or mirror mode for " GameDef.name ": every character must be played by hand.")))
+        P(5, Hint(g.AddText("xs y+16 w620 cGray", "No team commands, broadcasting or mirror mode for " GameDef.name ": " GameDef.why ".")))
 
     ; ---- page 6: features ----
     P(6, g.AddText("xs ys w620", "Choose the features you want. You can change all of these later."))
@@ -4494,9 +4555,11 @@ BuildToolbar() {
         TBAdd("bc",      "Broadcast",  ToggleBroadcast, "Broadcast ON")
         TBAdd("mirror",  "Mirror",     ToggleMirror, "Mirror ON")
     }
-    TBAdd("vfx",     "Views",      ToggleVFX, "Views ON")
+    if GameDef.views
+        TBAdd("vfx",     "Views",      ToggleVFX, "Views ON")
     TBAdd("audio",   "Sound: All", ToggleAudio, "Sound: Active")
-    TBAdd("views",   "Edit Views", ShowViews)
+    if GameDef.views
+        TBAdd("views",   "Edit Views", ShowViews)
     if GameDef.together
         TBAdd("team",    "Team",       TeamMenu)
     TBAdd("arrange", "Arrange",    ManualArrange)
@@ -4918,10 +4981,10 @@ BuildPanel() {
     ; which game (each game keeps its own slots, layouts and settings)
     Panel.AddText("xm w52 h28 0x200", "Game:")
     gameDDL := Panel.AddDropDownList("x+4 yp w220", GameNames())
-    gameDDL.Choose(GAME = "EverQuest" ? 1 : 2)
-    gameDDL.OnEvent("Change", (c, *) => (SetGame(c.Text) = false ? c.Choose(GAME = "EverQuest" ? 1 : 2) : 0))
+    gameDDL.Choose(GameIndex())
+    gameDDL.OnEvent("Change", (c, *) => (SetGame(c.Text) = false ? c.Choose(GameIndex()) : 0))
     AddTip(gameDDL, "Each game keeps its own slots, layouts and settings. Switching restarts MMORPG Boxer.")
-    Hint(Panel.AddText("x+12 yp w336 h28 0x200 cGray", GameDef.together ? "Each game keeps its own setup." : "Boxing: 3-box server only, every character by hand."))
+    Hint(Panel.AddText("x+12 yp w336 h28 0x200 cGray", GameDef.hint))
     ; 4 columns of buttons, each 150 wide with 8 between -> 624 wide
     LV := Panel.AddListView("xm y+8 w624 r8 -Multi", ["Slot", "Character", "Account", "Resolution", "Status", "Window"])
     LV.OnEvent("DoubleClick", PanelDoubleClick)
@@ -4951,9 +5014,11 @@ BuildPanel() {
         return b
     }
     ; features this game's rules don't allow are greyed out
-    PBx(opts, label, fn, tip) {
-        b := PB(opts, label, fn, GameDef.together ? tip : "Not available for " GameDef.name ": every character must be played by hand.")
-        if !GameDef.together
+    PBx(opts, label, fn, tip, allowed := "") {
+        if (allowed = "")
+            allowed := GameDef.together
+        b := PB(opts, label, fn, allowed ? tip : "Not available for " GameDef.name ": " GameDef.why ".")
+        if !allowed
             b.Enabled := false
     }
     PB("xm y+12 " bw " Section", "Launch All", LaunchAll, TipText(GameDef.launchers.Length
@@ -4963,8 +5028,8 @@ BuildPanel() {
     PB("x+8 yp " bw, "Save Layout...", SaveLayout, TipText("Save where the clients are now as a new layout"))
     PBx("x+8 yp " bw, "Mirror On/Off", ToggleMirror, TipText("Clicks are repeated in every client", "ToggleMirror", "^!m"))
     PBx("xs y+8 " bw, "Broadcast On/Off", ToggleBroadcast, TipText("Keys you press are pressed in every client", "ToggleBroadcast", "^!b"))
-    PB("x+8 yp " bw, "Views On/Off", ToggleVFX, TipText("Show or hide your clickable views", "ToggleVFX", "^!v"))
-    PB("x+8 yp " bw, "Clickable Views...", ShowViews, TipText("Make, move, change and delete clickable views", "ViewManager", "^!e"))
+    PBx("x+8 yp " bw, "Views On/Off", ToggleVFX, TipText("Show or hide your clickable views", "ToggleVFX", "^!v"), GameDef.views)
+    PBx("x+8 yp " bw, "Clickable Views...", ShowViews, TipText("Make, move, change and delete clickable views", "ViewManager", "^!e"), GameDef.views)
     PB("x+8 yp " bw, "Characters...", ShowAccounts, TipText("Character and account names for each slot", "Accounts", "^!a"))
     PB("xs y+8 " bw, "Show/Hide Toolbar", ToggleToolbar, TipText("Show or hide the on-screen button bar", "ToggleToolbar", "^!k"))
     PB("x+8 yp " bw, "Setup Wizard...", ShowWizard, TipText("Set everything up step by step", "SetupWizard", "^!w"))

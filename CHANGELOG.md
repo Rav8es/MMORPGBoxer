@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.0
+- **EverQuest II and EVE Online support.** Choose them in the Game box (control panel or Setup Wizard). Each game keeps its own MMORPGBoxer-<game>.ini.
+- EverQuest II: layouts, switching, clickable views, sound and CPU settings. Broadcasting, mirror mode, team commands and key maps are left out, following Daybreak's policy against software sending one command to several characters. Launch All opens LaunchPad.
+- EVE Online: layouts, switching, sound and CPU settings. Broadcasting, mirror mode, team commands, key maps and clickable views are left out, following CCP's rules. EVE's own window titles are kept. Launch All opens the EVE launcher.
+- Features a game doesn't allow are greyed out in the control panel and left off the toolbar.
+
 ## 1.7.0
 - **Monsters & Memories support.** Choose the game in the control panel or the Setup Wizard; each game keeps its own slots, layouts and settings (Monsters & Memories uses MMORPGBoxer-MonstersAndMemories.ini).
 - Following Monsters & Memories' rules (boxing only on its 3-box server, every character played by hand), its setup allows at most 3 slots and leaves out broadcasting, mirror mode, the mirrored click, team commands and key maps. Layouts, slot switching, clickable views, sound from the active client, CPU settings, the toolbar and the control panel work as usual.

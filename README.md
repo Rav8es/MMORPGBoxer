@@ -1,6 +1,6 @@
 # MMORPG Boxer
 
-A multiboxing tool for **EverQuest Live** and **Monsters & Memories** on Windows. It runs on AutoHotkey v2 and is configured with an INI file per game.
+A multiboxing tool for **EverQuest Live**, **EverQuest II**, **Monsters & Memories** and **EVE Online** on Windows. It runs on AutoHotkey v2 and is configured with an INI file per game. Each game only gets the features its rules allow (section 3.0a).
 
 It helps you run several EverQuest clients at once:
 - Launch them and lay them out in a grid on screen.
@@ -79,16 +79,28 @@ The **Setup Wizard** opens by itself the first time you start MMORPG Boxer. Open
 **Cancel** closes the wizard without saving and stops it opening by itself. You'll still need to do the scaling step in 3.1 yourself, since the wizard can't change Windows settings for EverQuest.
 
 ### 3.0a Choosing the game
-Pick the game in the **Game** box at the top of the control panel or on the first page of the Setup Wizard. Each game keeps its own slots, layouts and settings: EverQuest uses `MMORPGBoxer.ini`, Monsters & Memories uses `MMORPGBoxer-MonstersAndMemories.ini`. Switching restarts MMORPG Boxer; the first time you switch to a game, its Setup Wizard opens.
+Pick the game in the **Game** box at the top of the control panel or on the first page of the Setup Wizard. Each game keeps its own slots, layouts and settings: EverQuest uses `MMORPGBoxer.ini`, the others `MMORPGBoxer-<game>.ini` (for example `MMORPGBoxer-EVEOnline.ini`). Switching restarts MMORPG Boxer; the first time you switch to a game, its Setup Wizard opens.
 
-**Monsters & Memories** allows boxing only on its 3-box server (Nunavoth), and every character must be played by hand. So for Monsters & Memories, MMORPG Boxer:
-- allows at most **3 slots**;
-- leaves out **broadcasting, mirror mode, the mirrored click (mouse button 4), team commands and key maps** (their buttons are greyed out and their hotkeys do nothing), because each of those makes one key press or click act in several clients;
-- keeps **layouts, slot switching, clickable views, sound from the active client, CPU settings, the toolbar and the control panel**. A clickable view clicks one button in one client per click;
-- doesn't start the clients itself: **Launch All opens the Monsters & Memories launcher**. Start each character from the launcher; MMORPG Boxer puts each window into the next free slot as it opens (Ctrl+Alt+F1–F3 moves a client to another slot);
-- doesn't use EverQuest's eqclient.ini features (per-character settings files, frame-rate caps, the login name). Set frame-rate limits and the window mode in the game's own options, and play in **windowed** mode (Alt+Enter switches between windowed and windowed fullscreen).
+Every game follows its publisher's rules about software. Features a game doesn't allow are greyed out, and their hotkeys only show a message:
 
-Monsters & Memories support is new: if a client keeps jumping back to its own size when MMORPG Boxer arranges it, set the game's windowed resolution to the slot's size, and send MMORPGBoxer.log.
+| | EverQuest | EverQuest II | Monsters & Memories | EVE Online |
+|---|---|---|---|---|
+| Layouts, slot switching, toolbar, panel | yes | yes | yes | yes |
+| Sound from the active client, CPU settings | yes | yes | yes | yes |
+| Clickable views | yes | yes | yes | no |
+| Broadcasting, mirror mode, mouse-button-4 click, team commands, key maps | yes | no | no | no |
+| Most slots | 8 | 8 | 3 | 8 |
+| Launch All | starts the clients | opens LaunchPad | opens the M&M launcher | opens the EVE launcher |
+| eqclient.ini features (per-character settings, frame-rate caps, login name) | yes | no | no | no |
+
+Why:
+- **EverQuest II:** boxing is allowed, but Daybreak's stated policy is that software may not issue simultaneous commands to several characters.
+- **Monsters & Memories:** boxing is allowed only on its 3-box server (Nunavoth), and every character must be played by hand.
+- **EVE Online:** multiboxing is allowed, but CCP bans input broadcasting and multiplexing, and overlays that use parts of other clients to act in them. Window positions and arrangements are allowed. MMORPG Boxer also keeps EVE's own window titles (`EVE - <character>`).
+
+For the games started from their own launcher, start each character from the launcher (with LaunchPad, start it again for each account). MMORPG Boxer puts each window into the next free slot as it opens; Ctrl+Alt+F1… moves a client to another slot. Play in **windowed** mode, and set frame-rate limits in the game's own options.
+
+Support for EverQuest II, Monsters & Memories and EVE Online is new. If a client keeps jumping back to its own size when MMORPG Boxer arranges it, set the game's windowed resolution to the slot's size, and send MMORPGBoxer.log.
 
 ### 3.1 Turn off Windows scaling for EverQuest (required on 4K)
 1. Close all EverQuest clients.
