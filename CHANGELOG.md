@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1
+- Fix: 1.2.0 wouldn't start ("Error: Missing """ at line 2716). A message in the new Clickable Views window had a semicolon that AutoHotkey read as the start of a comment.
+- Every build is now checked for this kind of mistake before it's released.
+
 ## 1.2.0
 - New **Clickable Views** window (Ctrl+Alt+E, **Edit Views** on the toolbar, or **Clickable Views...** in the control panel): make views, change the area a view copies, move or resize it, rename, delete, flash where it is, change which slot it copies from, set its opacity, and choose whether views show at start-up and what clicking one does. It replaces the toolbar's New View button.
 - Tooltips on every toolbar and control panel button showing what it does and its keyboard shortcut. Turn them off with **Show tooltips with shortcuts** in the control panel (`[General] ShowTooltips`).

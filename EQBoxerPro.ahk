@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "EQ Boxer Pro"
-global APP_VERSION := "1.2.0"
+global APP_VERSION := "1.2.1"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/BoxerPro"
 ; installed copies ship an icon next to the script
@@ -2537,6 +2537,12 @@ DeleteView(*) {
 ; ------------------------- Clickable Views window -------------------------
 ShowViews(*) {
     global VM
+    g := 0
+    VBtn(opts, label, fn, tip) {
+        btn := g.AddButton(opts, label)
+        btn.OnEvent("Click", fn)
+        AddTip(btn, tip)
+    }
     if !VM {
         g := Gui(, APP " - Clickable Views")
         g.SetFont("s10", "Segoe UI")
@@ -2546,11 +2552,6 @@ ShowViews(*) {
         VM.list.OnEvent("ItemSelect", VMSelect)
         VM.list.OnEvent("DoubleClick", (*) => VMRename())
         bw := "w154 h32"
-        VBtn(opts, label, fn, tip) {
-            btn := g.AddButton(opts, label)
-            btn.OnEvent("Click", fn)
-            AddTip(btn, tip)
-        }
         VBtn("xm y+10 " bw " Section", "New View...", (*) => VMNew()
             , TipText("Drag a box around the area to copy, then where the copy should go", "CreateView", "^!c"))
         VBtn("x+8 yp " bw, "Change Area...", (*) => VMArea()
@@ -2713,7 +2714,7 @@ VMRename() {
         return
     name := Trim(ib.Value)
     if (name = "" || RegExMatch(name, "[=|\[\];]")) {
-        MsgBox("Use a name without = | [ ] or ;", APP, "Icon! Owner" VM.gui.Hwnd)
+        MsgBox("Use a name without = | [ ] or `;", APP, "Icon! Owner" VM.gui.Hwnd)
         return
     }
     if (name != v.Name && HasViewName(name)) {

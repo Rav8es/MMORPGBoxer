@@ -15,6 +15,7 @@ VER=$(grep -oP 'global APP_VERSION := "\K[0-9.]+' "$ROOT/EQBoxerPro.ahk")
 rm -rf "$STAGE" && mkdir -p "$STAGE" "$DIST" "$CACHE"
 cp "$ROOT/EQBoxerPro.ahk" "$ROOT/README.md" "$ROOT/LICENSES.txt" "$STAGE/"
 cp "$ROOT/installer/EQBoxerPro.ico" "$STAGE/"
+python3 "$ROOT/installer/lint_ahk.py" "$ROOT/EQBoxerPro.ahk"
 python3 "$ROOT/installer/make_html.py" "$STAGE/README.md" "$STAGE/README.html"
 
 # Unmodified official AutoHotkey v2 release (runtime + AutoHotkey Dash)
