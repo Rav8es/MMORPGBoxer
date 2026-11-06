@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.2
+- **Fixed EverQuest pictures staying stretched or squashed after changing screens.** When several clients change screens at the same moment (for example with broadcast on), each can pick up another slot's window size from the shared eqclient.ini. MMORPG Boxer put the windows back but EverQuest kept drawing at the wrong size. Now it puts the window back and also makes EverQuest redraw at the slot's size.
+- **Per-character settings go to the right character.** When EverQuest saves eqclient.ini, the save is matched to the client whose window it describes (before, it could be filed under the character you were playing). The file is then set back to that character's window size, so the next client to read it doesn't take another slot's size.
+- **Readable tooltips in dark mode** (they were light grey on white), including the status messages in the corner of the screen.
+- The Team Commands button's tooltip lists each command's own shortcut.
+- The control panel's slot list shows its column headers in full.
+
 ## 1.8.1
 - **Guide rewritten for all four games.** It starts with a feature list and a quick start, has a new "Supported games" section, and notes which features are EverQuest only. Stale parts (toolbar, control panel, tray menu, troubleshooting) are brought up to date.
 - **The guide is also the project's wiki** (github.com/Rav8es/MMORPGBoxer/wiki), one page per topic, updated automatically whenever the guide changes.

@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "MMORPG Boxer"
-global APP_VERSION := "1.8.1"
+global APP_VERSION := "1.8.2"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/MMORPGBoxer"
 global OLD_UPDATE_REPO := "Rav8es/BoxerPro"     ; its name before the rename
@@ -186,6 +186,7 @@ global ProfilesOn := GameDef.eqIni && Cfg("Profiles", "PerCharacter", "1") = "1"
 global IniHolder := 0         ; slot whose own settings eqclient.ini holds right now
 global IniStamp := ""         ; eqclient.ini's time/size when we last wrote or saved it
 global LastClosed := {n: 0, t: 0}   ; the slot whose client closed most recently
+global ResyncPending := Map()   ; id -> why: a re-sync is waiting for the window to settle
 global CpuDone := Map()       ; id -> CPU settings applied to that client
 global PF := 0                ; Team & Performance window
 global Appearance := Cfg("General", "Appearance", "System")   ; System | Light | Dark
@@ -604,7 +605,7 @@ UpdateTitles() {
                 ; real window size.
                 if (GameDef.eqIni && Placed.Has(id) && !RegExMatch(cur, "^EQ" n "\b")) {
                     WriteLog("slot " n ": EverQuest changed its title to '" cur "' (changing screens) - will re-sync it")
-                    SetTimer(ResyncLater.Bind(id, 0), -3000)
+                    QueueResync(id, "after changing screens")
                 }
                 WinSetTitle(want, "ahk_id " id)
             }
@@ -612,11 +613,23 @@ UpdateTitles() {
     }
 }
 
+; Re-sync a client once its window has stopped changing (one at a time per
+; client: asking again while one is waiting does nothing).
+QueueResync(id, why) {
+    if ResyncPending.Has(id)
+        return
+    ResyncPending[id] := why
+    SetTimer(ResyncLater.Bind(id, 0), -3000)
+}
+
 ; Wait until the client's window has stopped changing, then re-sync it.
 ResyncLater(id, tries, *) {
     static last := Map()
-    if !WinExist("ahk_id " id)
+    if !WinExist("ahk_id " id) {
+        if ResyncPending.Has(id)
+            ResyncPending.Delete(id)
         return
+    }
     desc := WinDesc(id)
     if (tries < 10 && (!last.Has(id) || last[id] != desc)) {
         last[id] := desc
@@ -625,7 +638,10 @@ ResyncLater(id, tries, *) {
     }
     if last.Has(id)
         last.Delete(id)
-    ResyncClient(id, "after changing screens")
+    why := ResyncPending.Has(id) ? ResyncPending[id] : "after changing screens"
+    if ResyncPending.Has(id)
+        ResyncPending.Delete(id)
+    ResyncClient(id, why)
 }
 
 ; Make EverQuest redraw at its window's real size: a tiny resize and back,
@@ -750,6 +766,26 @@ WriteSlotGeometry(n) {
         PrepareSlotIni(n, true)
 }
 
+; The running slot whose window is at the position just saved in
+; eqclient.ini (EverQuest saves its own window's position), else 0.
+WriterSlot() {
+    try {
+        x := Integer(IniRead(EqIni(), "Defaults", "WindowedModeXOffset", "?"))
+        y := Integer(IniRead(EqIni(), "Defaults", "WindowedModeYOffset", "?"))
+    } catch
+        return 0
+    for n, id in Slots {
+        if !id
+            continue
+        try {
+            WinGetPos(&ox, &oy, , , "ahk_id " id)
+            if (ox = x && oy = y)
+                return n
+        }
+    }
+    return 0
+}
+
 ; Copy the shared eqclient.ini (just saved by EverQuest) into slot n's copy.
 SaveToProfile(n) {
     global IniStamp
@@ -770,13 +806,25 @@ ProfileTick() {
     if (IniStamp != "" && st != IniStamp && !Launching) {
         ; EverQuest wrote eqclient.ini: who? A client that just closed, else
         ; the one you're in, else the one whose settings were in the file.
-        owner := (LastClosed.n && A_TickCount - LastClosed.t < 8000) ? LastClosed.n : SlotOf(WinActive(EQ))
+        ; Several clients can save at once (for example all changing screens
+        ; together with broadcast on), so first look for the client whose
+        ; window is where the saved settings say.
+        owner := (LastClosed.n && A_TickCount - LastClosed.t < 8000) ? LastClosed.n : WriterSlot()
+        if !owner
+            owner := SlotOf(WinActive(EQ))
         if !owner
             owner := IniHolder
         if owner
             SaveToProfile(owner)
         else
             IniStamp := st
+        ; The file should keep holding the settings of the client it was set
+        ; up for, so the next client to re-read it doesn't take another
+        ; slot's window size.
+        if (IniHolder && owner && owner != IniHolder && IniHolder <= MAX_SLOTS) {
+            WriteSlotGeometry(IniHolder)
+            IniStamp := FileStamp(EqIni())
+        }
     } else if (IniStamp = "")
         IniStamp := st
     if (Launching || Switching)
@@ -1938,11 +1986,16 @@ PlaceClipped(id, x, y, w, h) {
         ClipToPicture(id)
         return true
     }
-    ; while running, a size EverQuest chose itself is accepted (no fighting)
-    if (Enforcing && !sizeOK && posOK && clipOK)
+    ; Once an EverQuest client has settled, a size change it makes by itself
+    ; means it re-read eqclient.ini while changing screens and took another
+    ; slot's size (for example every client changing screens at once with
+    ; broadcast on). Put it back AND make it redraw at the slot size,
+    ; otherwise its picture stays stretched or squashed.
+    settledEQ := GameDef.eqIni && Settle.Has(id) && Settle[id].ok
+    ; while starting up, a size EverQuest chose itself is accepted (no fighting)
+    if (Enforcing && !sizeOK && posOK && clipOK && !settledEQ)
         return false
-    ; while running (not a manual Arrange), never fight EverQuest over size
-    resizing := !sizeOK && !Enforcing
+    resizing := !sizeOK && (!Enforcing || settledEQ)
     tw := resizing ? w : pw, th := resizing ? h : ph
     ; frame sizes around the picture (0 if it has none)
     fl := px - ox, ft := py - oy, fr := ox + ow - px - pw, fb := oy + oh - py - ph
@@ -1962,6 +2015,8 @@ PlaceClipped(id, x, y, w, h) {
     SetTimer(LogAfter.Bind(id, "1 s after placing"), -1000)
     if Enforcing
         NoteFix(id)
+    if (Enforcing && settledEQ)
+        QueueResync(id, "EverQuest moved or resized its window by itself")
     return true
 }
 
@@ -1993,9 +2048,11 @@ FollowUpClip(id, x, y, w, h, tries, *) {
         }
         fl := px - ox, ft := py - oy, fr := ox + ow - px - pw, fb := oy + oh - py - ph
         if !sizeOK {
-            WriteLog("slot " n ": picture is " pw "x" ph ", want " w "x" h " - resizing (keeping its frame) - " desc)
+            WriteLog("slot " n ": picture is " pw "x" ph ", want " w "x" h " - resizing (keeping its frame, telling EverQuest to redraw) - " desc)
+            try SendMessage(0x231, 0, 0, , "ahk_id " id, , , , 1000)      ; WM_ENTERSIZEMOVE
             DllCall("SetWindowPos", "Ptr", id, "Ptr", 0, "Int", x - fl, "Int", y - ft
                 , "Int", w + fl + fr, "Int", h + ft + fb, "UInt", 0x14)
+            try SendMessage(0x232, 0, 0, , "ahk_id " id, , , , 1000)      ; WM_EXITSIZEMOVE
         } else if !posOK {
             WriteLog("slot " n ": picture at " px "," py ", want " x "," y " - moving - " desc)
             DllCall("SetWindowPos", "Ptr", id, "Ptr", 0, "Int", x - fl, "Int", y - ft, "Int", 0, "Int", 0, "UInt", 0x15)
@@ -3382,7 +3439,7 @@ SelectRect(prompt) {
     WinSetTransparent(60, dim)
     box := Gui("+AlwaysOnTop -Caption +ToolWindow -DPIScale +E0x20")
     box.BackColor := "FF3030"
-    ToolTip(prompt "`n(Esc cancels)", mL + 20, mT + 20, 3)
+    StyleTip(ToolTip(prompt "`n(Esc cancels)", mL + 20, mT + 20, 3))
     result := 0
     Loop {
         if GetKeyState("Escape", "P")
@@ -4013,7 +4070,7 @@ TipShow() {
         return
     MouseGetPos(, , , &c, 2)
     if (c = TipHwnd)
-        ToolTip(Tips[TipHwnd], , , 5)
+        StyleTip(ToolTip(Tips[TipHwnd], , , 5))
 }
 
 ; Hide the tooltip once the pointer leaves the control.
@@ -4025,6 +4082,35 @@ TipWatch() {
     TipHwnd := 0
     ToolTip(, , , 5)
     SetTimer(TipWatch, 0)
+}
+
+; In dark mode Windows draws AutoHotkey's tooltips with light text on a white
+; background. Draw them plain, dark grey with light text, instead.
+StyleTip(tt) {
+    if !tt
+        return tt
+    if DarkNow {
+        SetCtlTheme(tt, "none")
+        SendMessage(0x413, RGBtoBGR("2B2B2B"), 0, tt)    ; TTM_SETTIPBKCOLOR
+        SendMessage(0x414, RGBtoBGR("F0F0F0"), 0, tt)    ; TTM_SETTIPTEXTCOLOR
+    } else {
+        SetCtlTheme(tt, "")
+        SendMessage(0x413, DllCall("GetSysColor", "Int", 24, "UInt"), 0, tt)   ; COLOR_INFOBK
+        SendMessage(0x414, DllCall("GetSysColor", "Int", 23, "UInt"), 0, tt)   ; COLOR_INFOTEXT
+    }
+    SendMessage(0x41D, 0, 0, tt)                          ; TTM_UPDATE
+    return tt
+}
+
+; The team commands menu's tooltip: each command with its own shortcut.
+TeamTip() {
+    k(name, def) {
+        v := Cfg("Hotkeys", name, def)
+        return v != "" ? " (" NiceKey(v) ")" : ""
+    }
+    return "A menu of team commands: follow me" k("FollowMe", "^!f") ", stop following" k("StopFollow", "^!x")
+        . ", assist me" k("AssistMe", "^!t") ", attack my target" k("AttackMyTarget", "")
+        . ", back off" k("BackOff", "") ", sit" k("SitAll", "") ", stand" k("StandAll", "")
 }
 
 SetTipsOn(ctrl, *) {
@@ -4962,7 +5048,7 @@ OpenGuide(*) {
 Status(msg, ms := 2500) {
     try {
         MonitorGet(MonitorNum, &mL, &mT)
-        ToolTip(msg, mL + 10, mT + 10, 1)
+        StyleTip(ToolTip(msg, mL + 10, mT + 10, 1))
         if (ms > 0)
             SetTimer(() => ToolTip(, , , 1), -ms)
     }
@@ -4975,7 +5061,7 @@ UpdateIndicator() {
     MonitorGet(MonitorNum, &mL, &mT)
     t := (Broadcasting ? "BROADCAST ON" : "") (Broadcasting && Mirroring ? "  |  " : "") (Mirroring ? "MIRROR ON" : "")
     if (t != "")
-        ToolTip(t, mL + 10, mT + 45, 2)
+        StyleTip(ToolTip(t, mL + 10, mT + 45, 2))
     else
         ToolTip(, , , 2)
 }
@@ -5048,7 +5134,7 @@ BuildPanel() {
     PB("x+8 yp " bw, "Edit Config", EditConfig, TipText("Open MMORPGBoxer.ini in Notepad"))
     PB("x+8 yp " bw, "Reload Config", (*) => Reload(), TipText("Restart MMORPG Boxer to apply changes made in MMORPGBoxer.ini", "ReloadConfig", "^!r"))
     PB("xs y+8 " bw, "Team && Performance...", ShowPerf, TipText("In-game names, follow/assist, CPU cores, frame-rate caps and per-character EverQuest settings"))
-    PBx("x+8 yp " bw, "Team Commands...", TeamMenu, TipText("Follow me, stop following, assist me, attack, sit, stand", "FollowMe", "^!f"))
+    PBx("x+8 yp " bw, "Team Commands...", TeamMenu, TeamTip())
     PB("x+8 yp " bw, "Diagnostics...", Diagnostics, TipText("Write a report of every window and the recent log (to send when something's wrong)"))
     PB("x+8 yp " bw, "Check for Updates", (*) => CheckForUpdates(false), TipText("Look for a newer version of MMORPG Boxer"))
     tipBox := Panel.AddCheckbox("xs y+8 w300 h28" (TipsOn ? " Checked" : ""), "Show tooltips with shortcuts")
@@ -5172,10 +5258,9 @@ RefreshPanel() {
             st .= " - not in its slot, restart it"
         LV.Add(, n, Chars[n], SlotUser(n), SlotResText(n), st, id ? Format("0x{:X}", id) : "")
     }
-    LV.ModifyCol()
-    LV.ModifyCol(1, "Integer 50")
-    LV.ModifyCol(2, "AutoHdr")
-    LV.ModifyCol(3, "AutoHdr")
+    Loop 6
+        LV.ModifyCol(A_Index, "AutoHdr")
+    LV.ModifyCol(1, "Integer")
     if (PanelSel >= 1 && PanelSel <= MAX_SLOTS)
         LV.Modify(PanelSel, "Select Focus")
     LV.Opt("+Redraw")
