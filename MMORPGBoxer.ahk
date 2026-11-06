@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "MMORPG Boxer"
-global APP_VERSION := "1.8.2"
+global APP_VERSION := "1.8.3"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/MMORPGBoxer"
 global OLD_UPDATE_REPO := "Rav8es/BoxerPro"     ; its name before the rename
@@ -78,9 +78,13 @@ global LaunchArgs     := Cfg("General", "LaunchArgs", "patchme")
 ; and it then drew a smaller picture than its window. Raise old defaults.
 if (Cfg("General", "LaunchDelay", "") = "4000")
     IniWrite(12000, CFG_FILE, "General", "LaunchDelay")
+; 1.8.3: LaunchDelay now counts from when a client's window opens (it used to
+; come on top of the 15 s settle time), so the old 12 s default becomes 5 s.
+if (Cfg("General", "LaunchDelay", "") = "12000")
+    IniWrite(5000, CFG_FILE, "General", "LaunchDelay")
 if (Cfg("General", "SettleTime", "") = "8000")
     IniWrite(15000, CFG_FILE, "General", "SettleTime")
-global LaunchDelay    := ToInt(Cfg("General", "LaunchDelay", "12000"), 12000)
+global LaunchDelay    := ToInt(Cfg("General", "LaunchDelay", "5000"), 5000)
 global MonitorNum     := ToInt(Cfg("General", "Monitor", "1"), 1)
 global Layout         := Cfg("General", "Layout", "Grid")   ; Grid, Swap, or a preset name
 global AutoArrange    := Cfg("General", "AutoArrange", "1") = "1"
@@ -1743,9 +1747,41 @@ FitCell(c) {
     return c
 }
 
-; EverQuest opens at WindowedModeXOffset/YOffset with WindowedWidth/Height
-; and maps the mouse from there. Writing the slot's cell before a client
-; starts makes it open exactly in its slot.
+; Title bar + border around a new EverQuest window's picture: {l, t} = how
+; far the picture starts from the window's top-left corner. Measured from a
+; running client that still has its frame, else worked out from Windows'
+; normal window frame.
+EqFrame() {
+    static last := 0
+    for n, id in Slots {
+        if !id
+            continue
+        try {
+            WinGetPos(&ox, &oy, , , "ahk_id " id)
+            WinGetClientPos(&px, &py, , , "ahk_id " id)
+            if (px - ox > 0 && py - oy > 0 && px - ox < 60 && py - oy < 150) {
+                fr := {l: px - ox, t: py - oy}
+                if (!last || last.l != fr.l || last.t != fr.t)
+                    try IniWrite(fr.l "," fr.t, CFG_FILE, "General", "EqFrame")   ; remembered for next time
+                last := fr
+                break
+            }
+        }
+    }
+    if last
+        return last
+    saved := StrSplit(Cfg("General", "EqFrame", ""), ",")
+    if (saved.Length = 2 && IsInteger(saved[1]) && IsInteger(saved[2]))
+        return {l: Integer(saved[1]), t: Integer(saved[2])}
+    bs := BorderSize()
+    return {l: bs.w // 2, t: bs.h - bs.w // 2}
+}
+
+; EverQuest opens at WindowedModeXOffset/YOffset (its window's top-left
+; corner, title bar included) with a picture of WindowedWidth/Height, and maps
+; the mouse from there. Writing the slot's cell, moved up and left by the
+; title bar and border, makes the picture open exactly in its slot (before,
+; it opened a title bar's height too low until the client had settled).
 PrepareSlotIni(n, force := false) {
     if (!PrepareIni || !n)
         return
@@ -1756,7 +1792,8 @@ PrepareSlotIni(n, force := false) {
     c := CellFor(n, true)               ; the size it can safely open at
     if !c
         return
-    v := c
+    fr := EqFrame()
+    v := {x: c.x - fr.l, y: c.y - fr.t, w: c.w, h: c.h}
     ; Only write when the file differs (running clients may have changed it).
     try {
         same := IniRead(ini, "Defaults", "WindowedModeXOffset", "") = String(v.x)
@@ -1765,7 +1802,7 @@ PrepareSlotIni(n, force := false) {
              && IniRead(ini, "VideoMode", "WindowedHeight", "") = String(v.h)
         if (same && !force)
             return
-        WriteLog("eqclient.ini set for slot " n ": offset " v.x "," v.y " size " v.w "x" v.h)
+        WriteLog("eqclient.ini set for slot " n ": offset " v.x "," v.y " size " v.w "x" v.h " (picture at " c.x "," c.y ")")
         IniWrite(v.x, ini, "Defaults", "WindowedModeXOffset")
         IniWrite(v.y, ini, "Defaults", "WindowedModeYOffset")
         IniWrite(0, ini, "Defaults", "Maximized")
@@ -1777,8 +1814,10 @@ PrepareSlotIni(n, force := false) {
 
 ; A client that opened in a slot's cell belongs to that slot.
 SlotByPosition(id) {
-    try WinGetPos(&x, &y, , , "ahk_id " id)
-    catch
+    try {
+        WinGetPos(&x, &y, , , "ahk_id " id)
+        WinGetClientPos(&px, &py, , , "ahk_id " id)
+    } catch
         return 0
     Loop MAX_SLOTS {
         if Slots[A_Index]
@@ -1786,7 +1825,7 @@ SlotByPosition(id) {
         c := CellFor(A_Index, true)
         if !c
             continue
-        if (Abs(x - c.x) <= 40 && Abs(y - c.y) <= 60)
+        if ((Abs(px - c.x) <= 40 && Abs(py - c.y) <= 60) || (Abs(x - c.x) <= 40 && Abs(y - c.y) <= 60))
             return A_Index
     }
     return 0
@@ -2762,15 +2801,18 @@ LaunchAll(*) {
                 NoteStart(id)
                 UpdateTitles()
                 ApplyCpu(n)
-                ; wait until this client has finished starting (its window
-                ; stopped changing) and has been arranged, before the next one
-                start := A_TickCount
-                while (!IsSettled(id) && A_TickCount - start < 60000)
-                    Sleep(500)
-                ArrangeCurrent()
-            }
-            Sleep(LaunchDelay)
+                ; EverQuest has read its position and size once its window is
+                ; open, so the next client can start after a short pause
+                ; (LaunchDelay) instead of waiting for this one to settle.
+                ; Clients that have finished starting are arranged meanwhile.
+                LaunchPause(LaunchDelay)
+            } else
+                LaunchPause(2000)
         }
+        ; let the last ones finish starting and be arranged
+        start := A_TickCount
+        while (!AllLaunchedSettled() && A_TickCount - start < 60000)
+            LaunchPause(500)
     } catch as e {
         MsgBox("Launch failed:`n" e.Message, APP, "Icon!")
     }
@@ -2778,6 +2820,29 @@ LaunchAll(*) {
     IniStamp := FileStamp(EqIni())     ; our own writes while launching aren't EverQuest's
     Arrange()
     Status("Launch complete - " CountClients() " client(s)")
+}
+
+; Wait ms milliseconds, arranging any client that has finished starting.
+LaunchPause(ms) {
+    start := A_TickCount
+    loop {
+        ready := false
+        for n, id in Slots
+            if (id && !Placed.Has(id) && IsSettled(id))
+                ready := true
+        if ready
+            ArrangeCurrent()
+        if (A_TickCount - start >= ms)
+            break
+        Sleep(Min(250, ms))
+    }
+}
+
+AllLaunchedSettled() {
+    for n, id in Slots
+        if (id && WinExist("ahk_id " id) && !(Settle.Has(id) && Settle[id].ok && Placed.Has(id)))
+            return false
+    return true
 }
 
 WaitNewWindow(before, timeout, n := 0) {
@@ -5292,8 +5357,8 @@ EQPath=C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest
 EQExe=eqgame.exe
 ; patchme starts a client at the login screen. Patch with LaunchPad first.
 LaunchArgs=patchme
-; Milliseconds to wait between launches
-LaunchDelay=12000
+; Milliseconds from a client's window opening to starting the next one
+LaunchDelay=5000
 ; Number of client slots to use (1-8)
 Slots=4
 ; Show what each button does and its shortcut when you point at it (1/0)

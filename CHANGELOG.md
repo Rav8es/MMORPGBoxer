@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.3
+- **EverQuest clients open exactly in their slots.** The position written to eqclient.ini now allows for the title bar and border, so a new client's picture no longer starts a title bar's height too low and jumps into place 15 seconds later. (A full-width slot still opens slightly narrower and is widened once the client has settled.)
+- **Launch All is much faster.** The next client starts 5 seconds after the previous one's window opens, instead of waiting for it to settle plus 12 seconds (about 45 seconds a client before). Clients are arranged as soon as each has settled, while the others are still starting. Your old LaunchDelay=12000 becomes 5000; raise it if a client ever opens in another slot's place.
+
 ## 1.8.2
 - **Fixed EverQuest pictures staying stretched or squashed after changing screens.** When several clients change screens at the same moment (for example with broadcast on), each can pick up another slot's window size from the shared eqclient.ini. MMORPG Boxer put the windows back but EverQuest kept drawing at the wrong size. Now it puts the window back and also makes EverQuest redraw at the slot's size.
 - **Per-character settings go to the right character.** When EverQuest saves eqclient.ini, the save is matched to the client whose window it describes (before, it could be filed under the character you were playing). The file is then set back to that character's window size, so the next client to read it doesn't take another slot's size.

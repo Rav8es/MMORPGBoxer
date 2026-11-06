@@ -310,7 +310,8 @@ While broadcasting is on, a **BROADCAST ON** label stays at the top-left of the 
   - `patchme` skips LaunchPad and goes straight to the login screen, so patch with LaunchPad first after every game update.
 - **Before each launch** (`PrepareIni=1`), the app writes the slot's position and size into eqclient.ini, so EverQuest opens exactly in its slot. This matters because EverQuest maps the mouse from the position it started at. Moving a client afterward makes the mouse drift.
 - **Settling:** the app leaves a new client alone until its window size has stayed the same for `SettleTime` ms (15 seconds by default), because EverQuest resizes itself while starting. Touching it earlier can leave it drawing a smaller picture than its window.
-- **One at a time:** Launch All waits for each client to settle and be arranged before starting the next, plus `LaunchDelay` (12 seconds). It's slower, but clients no longer start up on top of each other.
+- **One after another:** Launch All starts the next client `LaunchDelay` ms (5 seconds) after the previous one's window has opened. By then EverQuest has read its position and size, so clients don't open on top of each other. Each client is arranged as soon as it has settled, while the others are still starting. If a client ever opens in another slot's place, raise `LaunchDelay` (try 10000).
+- **Opens in place:** the position written to eqclient.ini allows for the title bar and border, so each client's picture opens exactly in its slot instead of a title bar's height lower. (A full-width slot still opens slightly narrower, then is widened once it has settled.)
 - **Title bar hidden straight away:** with the default `BorderMode=Clip`, a client's title bar is hidden as soon as its window appears, while it is still loading. Hiding it this way doesn't move or resize the window, so it's safe during start-up. Until the client is arranged, its picture may sit slightly below or beside its slot.
 - **Arranged once:** after the client has settled, the app moves it so its picture sits exactly on its slot, then leaves its size alone. Fighting EverQuest over size makes the picture shrink, grow or stretch.
 - **Hidden title bars stay hidden:** the app checks several times a second and hides a title bar again if it comes back. It doesn't otherwise touch a client that's already been arranged.
@@ -675,7 +676,7 @@ EverQuest's settings are in `MMORPGBoxer.ini`; each other game has its own `MMOR
 | EQPath | `C:\Users\Public\Daybreak Game Company\Installed Games\EverQuest` | The game's folder (for the other games, the folder with its launcher) |
 | EQExe | `eqgame.exe` | Game executable (`EverQuest2.exe`, `mnm.exe`, `exefile.exe`) |
 | LaunchArgs | `patchme` | Arguments for Launch All |
-| LaunchDelay | `12000` | ms between launches (after the previous client has settled) |
+| LaunchDelay | `5000` | ms from a client's window opening to starting the next one |
 | Slots | `4` | Slots in use (1–8) |
 | Monitor | `1` | Monitor number for the layout |
 | Layout | `Grid` | `Grid`, `Swap`, a preset name, or one of your `[Layout.Name]` layouts |
