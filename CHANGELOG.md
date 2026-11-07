@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.5
+- **A client you log in while Launch All is still running stays in its slot.** While a client is being launched, eqclient.ini holds that client's position, so a running client that changed screens (for example after you logged it in) jumped into the launching slot's place and only came back when the launch finished. Clients are now kept in their slots during the launch as well, and put back within a second.
+- The control panel shows each client as running as soon as it opens during Launch All.
+- When two windows are at the position EverQuest just saved, the save goes to the one that had jumped out of its own slot.
+
 ## 1.8.4
 - **Full-width clients fill their slot within seconds.** A client in a slot as wide (or tall) as the screen still has to open slightly narrower, but it's now widened about 4 seconds after its window opens instead of 15 seconds later, so the strip of desktop beside it disappears quickly. Once it has settled it's re-synced so EverQuest draws at the full size.
 

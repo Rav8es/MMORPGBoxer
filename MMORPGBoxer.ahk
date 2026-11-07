@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "MMORPG Boxer"
-global APP_VERSION := "1.8.4"
+global APP_VERSION := "1.8.5"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/MMORPGBoxer"
 global OLD_UPDATE_REPO := "Rav8es/BoxerPro"     ; its name before the rename
@@ -781,16 +781,30 @@ WriterSlot() {
         y := Integer(IniRead(EqIni(), "Defaults", "WindowedModeYOffset", "?"))
     } catch
         return 0
+    found := []
     for n, id in Slots {
         if !id
             continue
         try {
             WinGetPos(&ox, &oy, , , "ahk_id " id)
             if (ox = x && oy = y)
+                found.Push(n)
+        }
+    }
+    if (found.Length <= 1)
+        return found.Length ? found[1] : 0
+    ; Two windows at the same place: one of them jumped into another slot's
+    ; place after re-reading the file, and that's the one that just saved.
+    for n in found {
+        c := CellFor(n)
+        try {
+            WinGetClientPos(&px, &py, , , "ahk_id " Slots[n])
+            if (c && (px != c.x || py != c.y))
                 return n
         }
     }
-    return 0
+    act := SlotOf(WinActive(EQ))
+    return HasVal(found, act) ? act : found[1]
 }
 
 ; Copy the shared eqclient.ini (just saved by EverQuest) into slot n's copy.
@@ -2854,6 +2868,7 @@ LaunchAll(*) {
                 NoteStart(id)
                 UpdateTitles()
                 ApplyCpu(n)
+                RefreshPanel()
                 ; EverQuest has read its position and size once its window is
                 ; open, so the next client can start after a short pause
                 ; (LaunchDelay) instead of waiting for this one to settle.
@@ -2875,19 +2890,36 @@ LaunchAll(*) {
     Status("Launch complete - " CountClients() " client(s)")
 }
 
-; Wait ms milliseconds, arranging any client that has finished starting.
+; Wait ms milliseconds, arranging any client that has finished starting, and
+; keeping clients that are already arranged in their slots: while a client is
+; being launched eqclient.ini holds ITS position, and a running client that
+; changes screens (for example you log it in) re-reads the file and jumps
+; there. It's put straight back and told to redraw.
 LaunchPause(ms) {
     start := A_TickCount
     loop {
-        ready := false
-        for n, id in Slots
-            if (id && !Placed.Has(id) && IsSettled(id))
-                ready := true
-        if ready
-            ArrangeCurrent()
+        LaunchTick()
         if (A_TickCount - start >= ms)
             break
         Sleep(Min(250, ms))
+    }
+}
+
+; One step of the above (also run while waiting for a new client's window).
+LaunchTick() {
+    global Enforcing
+    static lastKeep := 0
+    ready := false
+    for n, id in Slots
+        if (id && !Placed.Has(id) && IsSettled(id))
+            ready := true
+    if ready
+        ArrangeCurrent()
+    else if (AutoArrange && !A_IsSuspended && A_TickCount - lastKeep >= 1000) {
+        lastKeep := A_TickCount
+        Enforcing := true
+        try ArrangeCurrent()
+        Enforcing := false
     }
 }
 
@@ -2906,8 +2938,11 @@ WaitNewWindow(before, timeout, n := 0) {
                 return id
         ; Other running clients can rewrite eqclient.ini at any moment, so keep
         ; this slot's position in it until the new client has read it.
-        if n
+        if n {
             PrepareSlotIni(n)
+            LaunchTick()                    ; meanwhile keep the others in place
+            PrepareSlotIni(n)
+        }
         Sleep(250)
     }
     return 0
