@@ -31,7 +31,7 @@ CoordMode("ToolTip", "Screen")
 CoordMode("Pixel", "Screen")
 
 global APP := "MMORPG Boxer"
-global APP_VERSION := "1.8.3"
+global APP_VERSION := "1.8.4"
 ; GitHub repository ("owner/name") that updates are published to
 global DEFAULT_UPDATE_REPO := "Rav8es/MMORPGBoxer"
 global OLD_UPDATE_REPO := "Rav8es/BoxerPro"     ; its name before the rename
@@ -175,6 +175,8 @@ global VFX := []
 global AccGui := 0, AccDDL := 0, AccName := 0, AccUser := 0, AccInfo := 0
 global Wiz := 0              ; Setup Wizard state
 global StartPos := Map()     ; id -> {x, y} where the client first opened
+global FirstSeen := Map()    ; id -> A_TickCount when the client's window was first seen
+global EarlyFitted := Map()  ; id -> true once a full-width/height client was widened early
 global OffSlotWarned := Map()
 global TB := 0, TBBtns := Map(), TBVertical := false, TBPos := 0
 global HL := []              ; active-client frame pieces
@@ -313,6 +315,7 @@ WatchClients()
 SetTimer(WatchClients, 1000)
 SetTimer(CheckActive, 150)
 SetTimer(ClipGuard, 300)               ; keep hidden title bars hidden
+SetTimer(EarlyFit, 500)                ; widen full-width clients soon after they open
 SetTimer(ProfileTick, 500)             ; per-character eqclient.ini
 ; Open the control panel when the app starts ([General] ShowPanelOnStart)
 if (Cfg("General", "ShowPanelOnStart", "1") = "1" && !DllCall("IsWindowVisible", "Ptr", Panel.Hwnd))
@@ -1853,8 +1856,58 @@ IsSettled(id) {
     if (now - st.t >= SettleTime) {
         st.ok := true
         WriteLog("slot " SlotOf(id) ": settled - " WinDesc(id))
+        ; widened while it was still starting: make sure it draws at that size
+        if (EarlyFitted.Has(id) && EarlyFitted[id])
+            QueueResync(id, "widened while starting - making sure it draws at the full size")
     }
     return st.ok
+}
+
+; A client in a slot that's as wide (or tall) as the screen has to open a
+; little smaller (see FitCell), which left a strip of desktop beside it until
+; it settled 15 s later. Widen it to its slot as soon as it has been open and
+; unchanged for a moment; once it settles it is re-synced so EverQuest draws
+; at the full size even if it was still loading when it was widened.
+EarlyFit() {
+    if (!HideBorders || BorderMode() != "Clip" || !GameDef.eqIni || Switching)
+        return
+    for n, id in Slots {
+        if (!id || EarlyFitted.Has(id) || !FirstSeen.Has(id) || StripFallback.Has(id) || KeepFrame.Has(id))
+            continue
+        if (Settle.Has(id) && Settle[id].ok) {
+            EarlyFitted[id] := false            ; already settled: the normal arranging handles it
+            continue
+        }
+        if (A_TickCount - FirstSeen[id] < 2500)
+            continue
+        IsSettled(id)                           ; keeps track of when it last changed
+        if (!Settle.Has(id) || A_TickCount - Settle[id].t < 1500)
+            continue
+        c := CellFor(n), s0 := CellFor(n, true)
+        if (!c || !s0)
+            continue
+        EarlyFitted[id] := false
+        if (c.w = s0.w && c.h = s0.h)
+            continue                            ; it opened at its full size
+        try {
+            if (WinGetMinMax("ahk_id " id) = -1)
+                continue
+            WinGetPos(&ox, &oy, &ow, &oh, "ahk_id " id)
+            WinGetClientPos(&px, &py, &pw, &ph, "ahk_id " id)
+        } catch
+            continue
+        if (Abs(pw - c.w) <= 1 && Abs(ph - c.h) <= 1)
+            continue
+        fl := px - ox, ft := py - oy, fr := ox + ow - px - pw, fb := oy + oh - py - ph
+        WriteLog("slot " n ": widening to its slot while it starts (" pw "x" ph " -> " c.w "x" c.h ", telling EverQuest to redraw) - " WinDesc(id))
+        try SendMessage(0x231, 0, 0, , "ahk_id " id, , , , 1000)      ; WM_ENTERSIZEMOVE
+        DllCall("SetWindowPos", "Ptr", id, "Ptr", 0, "Int", c.x - fl, "Int", c.y - ft
+            , "Int", c.w + fl + fr, "Int", c.h + ft + fb, "UInt", 0x14)
+        try SendMessage(0x232, 0, 0, , "ahk_id " id, , , , 1000)      ; WM_EXITSIZEMOVE
+        ClipToPicture(id)
+        EarlyFitted[id] := true
+        SetTimer(LogAfter.Bind(id, "1 s after widening"), -1000)
+    }
 }
 
 ; ------------------- Borderless by clipping (default) -------------------
@@ -2861,6 +2914,8 @@ WaitNewWindow(before, timeout, n := 0) {
 }
 
 NoteStart(id) {
+    if !FirstSeen.Has(id)
+        FirstSeen[id] := A_TickCount
     if StartPos.Has(id)
         return
     try {

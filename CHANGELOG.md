@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.8.4
+- **Full-width clients fill their slot within seconds.** A client in a slot as wide (or tall) as the screen still has to open slightly narrower, but it's now widened about 4 seconds after its window opens instead of 15 seconds later, so the strip of desktop beside it disappears quickly. Once it has settled it's re-synced so EverQuest draws at the full size.
+
 ## 1.8.3
 - **EverQuest clients open exactly in their slots.** The position written to eqclient.ini now allows for the title bar and border, so a new client's picture no longer starts a title bar's height too low and jumps into place 15 seconds later. (A full-width slot still opens slightly narrower and is widened once the client has settled.)
 - **Launch All is much faster.** The next client starts 5 seconds after the previous one's window opens, instead of waiting for it to settle plus 12 seconds (about 45 seconds a client before). Clients are arranged as soon as each has settled, while the others are still starting. Your old LaunchDelay=12000 becomes 5000; raise it if a client ever opens in another slot's place.
